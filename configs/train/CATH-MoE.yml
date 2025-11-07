@@ -1,0 +1,110 @@
+# training: python train.py ./configs/train/CATH-MoE.yml --tag CATH-MoE --device cuda:0
+# test: python test.py ./configs/train/CATH-MoE.yml  --device cuda:0
+checkpoints:
+  # sampler
+  - ./trained_models/USP-ddG-sampler_0.pt
+  - ./trained_models/USP-ddG-sampler_1.pt
+  - ./trained_models/USP-ddG-sampler_2.pt
+  - ./trained_models/USP-ddG-sampler_3.pt
+  - ./trained_models/USP-ddG-sampler_4.pt
+
+  # shuffle
+#  - ./trained_models/USP-ddG-random_0.pt
+#  - ./trained_models/USP-ddG-random_1.pt
+#  - ./trained_models/USP-ddG-random_2.pt
+#  - ./trained_models/USP-ddG-random_3.pt
+#  - ./trained_models/USP-ddG-random_4.pt
+
+early_stoppingdir: ./early_stopping
+model:
+  encoder:
+    node_feat_dim: 256
+    edge_feat_dim: 256
+    num_layers: 4
+  hidden_dim: 128
+  k1: 20    # knn neighbors
+  k2: 7     # long range
+  k3: 3     # neighbors of sequence
+  long_range_seq: 3
+  dropout: 0.1
+  noise_bb: &noise_bb 0.1
+  noise_sd: &noise_sd 0.2
+  num_labels: 6
+
+  Moe:
+    task_id: 0   # test: 200
+    topk: 2
+    Task_num: 1
+    experts_num: 12
+    ffn_num: 64
+    apply_moe: True
+    ffn_adapt: True
+    autorouter: True
+    adapter_flag: True
+
+data:
+    csv_path: ./data/SKEMPI2/skempi_v2_cache/skempi_v2.csv
+    pdb_wt_dir: ./data/SKEMPI2/skempi_v2_cache/wildtype
+    pdb_mt_dir: ./data/SKEMPI2/skempi_v2_cache/optimized
+    prior_dir: ./data/SKEMPI2/skempi_v2_cache
+    cache_dir: ./data/SKEMPI2/skempi_v2_cache/entries_cache
+    train:
+      transform:
+        # Only backbone atoms and CB are visible to rotamer predictor
+        - type: select_atom
+          resolution: backbone+CB
+        - type: add_atom_noise
+          noise_backbone: *noise_bb
+          noise_sidechain: *noise_sd
+        - type: selected_region_fixed_size_patch
+          select_attr: mut_flag
+          patch_size: 256
+    val:
+      transform:
+        - type: select_atom
+          resolution: backbone+CB
+        - type: add_atom_noise
+          noise_backbone: 0.0
+          noise_sidechain: 0.0
+        - type: selected_region_fixed_size_patch
+          select_attr: mut_flag
+          patch_size: 256
+    is_single: 2          # 0:single,1:multiple,2:overall
+    cath_fold: True      # default: False
+    PPIformer: False       # True
+    GearBind: False
+
+train:
+  loss_weights:
+    loss_structure: 1.0
+    loss_foldx: 1.0
+    loss_cath: 1.0
+    loss_boltzmann: 1.0
+  max_epochs: 100
+  early_stopping_epoch: 50
+  val_freq: 1
+  batch_size: 32
+  seed: 2024
+  num_cvfolds: 1
+
+  max_grad_norm: 100.0
+  optimizer:
+    type: adam
+    lr: &lr 5.e-4     #  lr_max
+    lr_2: &lr_2 5.e-6   #  lr_max_esm2
+    lr_3: &lr_3 5.e-5   #  lr_max_foldx
+    weight_decay: 1.e-4
+    weight_decay_2: 5.e-6
+    weight_decay_3: 5.e-6
+    beta1: 0.9
+    beta2: 0.999
+  scheduler:
+    type: lambdaLR
+    warm_up_iters: 4000
+    T_iters: 5000  # Cycle
+    lr_max: *lr
+    lr_min: 2.e-4
+    lr_2_max: *lr_2
+    lr_2_min: 2.e-6
+    lr_3_max: *lr_3
+    lr_3_min: 2.e-5

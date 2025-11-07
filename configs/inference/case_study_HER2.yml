@@ -1,0 +1,20 @@
+# python case_study.py ./configs/inference/case_study_HER2.yml --device cuda:0
+checkpoints:
+  - ./trained_models/case_study.pt      # sampler
+
+early_stoppingdir: ./early_stopping
+
+data:
+  pdb_wt_dir: ./data/SKEMPI2/HER2_cache/wildtype
+  pdb_mt_dir: ./data/SKEMPI2/HER2_cache/optimized
+  cache_dir: ./data/SKEMPI2/HER2_cache/entries_cache
+  transform:
+    - type: select_atom
+      resolution: backbone+CB
+    - type: add_atom_noise
+      noise_backbone: 0.0
+      noise_sidechain: 0.0
+    - type: selected_region_fixed_size_patch
+      select_attr: mut_flag
+  batch_size: 16
+  patch_size: 256

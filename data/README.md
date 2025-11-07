@@ -1,0 +1,12 @@
+### Datasets
+
+To generate mutant structures and prepare the processed datasets for SKEMPI v2.0, CR6261, HER2, and S285, respectively, execute the following commands from the code directory:
+
+```python skempi_parallel.py --reset --subset skempi_v2
+python skempi_parallel.py --reset --subset skempi_v2
+python skempi_parallel.py --reset --subset CR6261
+python skempi_parallel.py --reset --subset HER2
+python skempi_parallel.py --reset --subset S285
+```
+
+or preprocessed dataset files for HER2  are available at [HER2_cache](https://drive.google.com/file/d/1jHHuot3FjieTOBu293XP2uUk7xh_gD7B/view?usp=sharing),  then copy the cache folder **HER2_cache** into the **SKEMPI2** directory.
