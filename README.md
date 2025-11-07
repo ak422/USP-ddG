@@ -14,7 +14,7 @@ Overview of our **USP-ddG** architecture is shown below.
 
 
 
-## Installation
+#### Installation
 
 To install USP-ddG, first clone this repository
 
@@ -31,7 +31,9 @@ conda activate USP-ddG
 
 The default PyTorch version is 2.3.1, python version is 3.10, and cudatoolkit version is 11.3.1. They can be changed in [`env.yml`](./env.yml).
 
-## Preparation of processed dataset
+#### Preparation of processed dataset
+
+---
 
 To generate mutant structures and prepare the processed datasets for SKEMPI v2.0, CR6261, HER2, and S285, respectively, execute the following commands from the code directory:
 
@@ -51,10 +53,10 @@ python skempi_parallel.py --reset --subset S285
 
 #### Demo example
 
+---
+
 1. Download the  trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) folder and the Demo dataset from [Demo_cache];
 2. Execute the following command:
-
----
 
 ```
 python case_study.py ./configs/inference/demo.yml --device cuda:0
