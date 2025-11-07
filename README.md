@@ -55,8 +55,8 @@ python skempi_parallel.py --reset --subset S285
 
 ---
 
-1. Download the  trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) folder and the Demo dataset from [Demo_cache](https://drive.google.com/file/d/1_xw_JL-ck_90ghWAHKHOhZ0NKHxiODG5/view?usp=sharing);
-2. 
+1. Download the trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) and place  `case_study.pt`  in the `./trained_models/` directory.
+2. Download the Demo dataset from [Demo_cache](https://drive.google.com/file/d/1_xw_JL-ck_90ghWAHKHOhZ0NKHxiODG5/view?usp=sharing) and place `Demo_cache` in the `./data/SKEMPI2/` directory. 
 3. Execute the following command:
 
 ```
