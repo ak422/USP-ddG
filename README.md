@@ -4,7 +4,7 @@
 
 #### Description
 
-This repo contains code for **USP-ddG:  A Unified Structural Paradigm with Data Efficacy and Mixture-of-Experts for Predicting Mutational Effects on Protein-Protein Interactions ** by Guanglei Yu, Xuehua Bi, Qichang Zhao, and Jianxin Wang.
+This repo contains code for **USP-ddG:  A Unified Structural Paradigm with Data Efficacy and Mixture-of-Experts for Predicting Mutational Effects on Protein-Protein Interactions** by Guanglei Yu, Xuehua Bi, Qichang Zhao, and Jianxin Wang.
 
 In this work, we present USP-ddG, a unified structural paradigm for $\Delta \Delta G$ prediction. USP-ddG integrates a dual-channel architecture with three complementary components: (i) inverse folding-based log-odds ratio, (ii) empirical energy terms from FoldX, and (iii) a geometric encoder with Gaussian noise to capture relaxed conformations. To enhance representation power, we introduce a framework through the integration of feed-forward network (FFN) and Mixture-of-Experts (MoE) adapters to model domain-invariant and domain-specific features. We further propose CATH-guided Folding Ordering (CFO), a data efficacy strategy that organizes samples to mitigate catastrophic forgetting and bias. USP-ddG consistently outperforms existing state-of- the-art (SoTA) methods on the SKEMPI v2.0 benchmark, including the challenging hold-out CATH test set. It achieves superior accuracy on both single- and multi-point mutations and demonstrates strong performance in antibody affinity optimization against H1N1, HER2, and SARS-CoV-2.  
 
