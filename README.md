@@ -60,8 +60,6 @@ python skempi_parallel.py --reset --subset S285
 python case_study.py ./configs/inference/demo.yml --device cuda:0
 ```
 
-
-
 #### Usage of Inference and Training Models
 
 ***
