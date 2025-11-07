@@ -55,7 +55,7 @@ python skempi_parallel.py --reset --subset S285
 
 ---
 
-1. Download the  trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) folder and the Demo dataset from [Demo_cache];
+1. Download the  trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) folder and the Demo dataset from [Demo_cache](https://drive.google.com/file/d/1_xw_JL-ck_90ghWAHKHOhZ0NKHxiODG5/view?usp=sharing);
 2. Execute the following command:
 
 ```
