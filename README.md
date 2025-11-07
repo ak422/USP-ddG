@@ -10,7 +10,7 @@ In this work, we present USP-ddG, a unified structural paradigm for $\Delta \Del
 
 Overview of our **USP-ddG** architecture is shown below.
 
-<img src="./assets/cover.png" align="center" alt="cover" style="width:70%;" />
+<div align="center"><img src="./assets/cover.png" alt="cover" style="width:70%;" /></div>
 
 
 
