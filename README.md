@@ -56,7 +56,8 @@ python skempi_parallel.py --reset --subset S285
 ---
 
 1. Download the  trained weights from [case_study](https://drive.google.com/file/d/19hZRsNzwDTDYrKhsg_5BwDTKorVtQ1g_/view?usp=sharing) folder and the Demo dataset from [Demo_cache](https://drive.google.com/file/d/1_xw_JL-ck_90ghWAHKHOhZ0NKHxiODG5/view?usp=sharing);
-2. Execute the following command:
+2. 
+3. Execute the following command:
 
 ```
 python case_study.py ./configs/inference/demo.yml --device cuda:0
@@ -88,12 +89,6 @@ python case_study.py ./configs/inference/case_study_HER2.yml --device cuda:0
 
 ```
 python case_study.py ./configs/inference/case_study_S285.yml --device cuda:0
-```
-
-##### Evaluate USP-ddG in a zero-shot setting using the provided PDB file and mutation list
-
-```
-python zero_shot.py ./configs/inference/zero_shot.yml  --device cuda:0
 ```
 
 ##### Train USP-ddG on the hold-out CATH test set splitting
