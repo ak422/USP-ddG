@@ -72,7 +72,7 @@ train:
   val_freq: 5
   batch_size: 12
   seed: 2022
-  num_cvfolds: 1
+  num_cvfolds: 3
 
   max_grad_norm: 100.0
   optimizer:

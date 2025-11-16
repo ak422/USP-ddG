@@ -1191,9 +1191,6 @@ class MoE_ddG_NET(nn.Module):
     def inference(self, batch):
         batch_wt = batch["wt"]
         batch_mt = batch["mt"]
-        is_single = torch.where(batch_wt["num_muts"] > 1, 0, 1)[:, None]  # True: single, False: multiple
-        num_single = torch.clamp(torch.sum(batch_wt["num_muts"] == 1), 1)
-        num_multi = torch.clamp(torch.sum(batch_wt["num_muts"] > 1), 1)
 
         h_wt = self.encode(batch_wt)
         h_mt = self.encode(batch_mt)
@@ -1201,7 +1198,6 @@ class MoE_ddG_NET(nn.Module):
         h_mt = h_mt * batch_mt['mut_flag'][:, :, None]
         H_mt, H_wt = h_mt.max(dim=1)[0], h_wt.max(dim=1)[0]
 
-        # best case studies
         ddg_structure = self.ddg_readout(H_mt - H_wt)
         ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy'])
         ddg_boltzmann = batch_mt['mut_scores_cycle'] * self.boltzmann_scalar - batch_wt['wt_scores_cycle'] * self.boltzmann_scalar

@@ -264,7 +264,7 @@ if __name__ == '__main__':
                         # Prepare data
                         batch = recursive_to(batch, args.device)
                         # Forward pass
-                        output_dict, _ = model.inference(batch)
+                        output_dict = model.inference(batch)
                         for pdbcode, protein_group, complex_PPI, mutstr, ddg_true, ddg_pred in zip(batch["wt"]['#Pdb'], batch["wt"]['protein_group'], batch["wt"]['complex_PPI'], batch["wt"]['mutstr'],output_dict['ddG_true'],output_dict['ddG_pred']):
                             results.append({
                                 'pdbcode': pdbcode,
