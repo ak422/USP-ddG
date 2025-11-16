@@ -81,7 +81,7 @@ train:
     loss_boltzmann: 1.0
   max_epochs: 100
   early_stopping_epoch: 50
-  val_freq: 1
+  val_freq: 5
   batch_size: 12
   seed: 2024
   num_cvfolds: 1
