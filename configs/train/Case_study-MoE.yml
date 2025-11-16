@@ -60,7 +60,6 @@ data:
     is_single: 2          # 0:single,1:multiple,2:overall
     cath_fold: False      # default: False
     PPIformer: False       # True
-    GearBind: False
 
 train:
   loss_weights:

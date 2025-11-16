@@ -96,7 +96,6 @@ class SkempiDatasetManager(object):
             is_single=config.data.is_single,
             cath_fold=config.data.cath_fold,
             PPIformer=config.data.PPIformer,
-            GearBind=config.data.GearBind,
         )
 
         train_dataset = dataset_(split='train',transform = get_transform(config.data.train.transform))

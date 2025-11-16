@@ -157,7 +157,6 @@ if __name__ == '__main__':
         scalar_accum = ScalarMetricAccumulator()
         results = []
 
-        val_loss_dict = {}
         with torch.no_grad():
             for fold in range(config.train.num_cvfolds):
                 model, optimizer, scheduler, early_stopping = cv_mgr.get(fold)
@@ -169,11 +168,7 @@ if __name__ == '__main__':
                     batch = recursive_to(batch, args.device)
 
                     # Forward pass
-                    output_dict, loss_dict = model.inference(batch)
-                    loss = sum_weighted_losses(loss_dict, config.train.loss_weights)
-
-                    epoch_val_loss += loss.detach()
-
+                    output_dict = model.inference(batch)
                     for pdbcode, protein_group, complex_PPI, mutstr, ddg_true, ddg_pred in zip(batch["wt"]['#Pdb'], batch["wt"]['protein_group'], batch["wt"]['complex_PPI'], batch["wt"]['mutstr'], output_dict['ddG_true'], output_dict['ddG_pred']):
                         results.append({
                             'pdbcode': pdbcode,
@@ -184,8 +179,6 @@ if __name__ == '__main__':
                             'ddG': ddg_true.item(),
                             'ddG_pred': ddg_pred.item(),
                         })
-                val_loss = epoch_val_loss.item() / (step + 1)
-                val_loss_dict[fold] = val_loss
 
         results = pd.DataFrame(results)
         # PDB:1E96.pdb and 1E50.pdb
@@ -218,8 +211,6 @@ if __name__ == '__main__':
             df_metrics_string = df_metrics.to_string()
             logger.info('Results of overall predictions:\n%s', df_metrics_string)
 
-        return val_loss_dict
-
     try:
         # 在训练循环开始前初始化trackers
         logger.info('Training model...')
@@ -238,7 +229,7 @@ if __name__ == '__main__':
                 continue
 
             if epoch % config.train.val_freq == 0:
-                fold_val_losses = validate(epoch)
+                validate(epoch)
 
                 if epoch >= 150:
                     date_time = re.search(r'\d{2}_\d{2}_\d{2}_\d{2}_\d{2}', log_dir)

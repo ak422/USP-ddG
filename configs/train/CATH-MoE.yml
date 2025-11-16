@@ -71,8 +71,7 @@ data:
           patch_size: 256
     is_single: 2          # 0:single,1:multiple,2:overall
     cath_fold: True      # default: False
-    PPIformer: False       # True
-    GearBind: False
+    PPIformer: False
 
 train:
   loss_weights:
@@ -83,7 +82,7 @@ train:
   max_epochs: 100
   early_stopping_epoch: 50
   val_freq: 1
-  batch_size: 32
+  batch_size: 12
   seed: 2024
   num_cvfolds: 1
 
