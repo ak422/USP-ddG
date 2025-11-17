@@ -161,8 +161,6 @@ if __name__ == '__main__':
             for fold in range(config.train.num_cvfolds):
                 model, optimizer, scheduler, early_stopping = cv_mgr.get(fold)
                 model.eval()
-
-                epoch_val_loss = torch.zeros(1).to(args.device)
                 for step, batch in enumerate(tqdm(dataset_mgr.get_val_loader(fold), desc=f'\033[0;37;42m Testing fold {fold+1}/{config.train.num_cvfolds}\033[0m', dynamic_ncols=True, bar_format="{l_bar}%s{bar}%s{r_bar}" % (Fore.WHITE, Fore.RESET))):
                     # Prepare data
                     batch = recursive_to(batch, args.device)

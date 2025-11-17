@@ -118,8 +118,7 @@ class SkempiDatasetManager(object):
         train_loader = DataLoader(
             train_dataset,
             batch_size=config.train.batch_size,
-            # collate_fn=PaddingCollate(config.data.train.transform[2].patch_size),
-            collate_fn=PaddingCollate(),
+            collate_fn=PaddingCollate(config.data.train.transform[2].patch_size),
             # shuffle=True,
             sampler=sampler,
             shuffle=False,    # 采样器已经控制顺序，无需再 shuffle
@@ -130,8 +129,7 @@ class SkempiDatasetManager(object):
             val_dataset, 
             batch_size=config.train.batch_size,
             shuffle=False,
-            # collate_fn=PaddingCollate(config.data.val.transform[2].patch_size),
-            collate_fn=PaddingCollate(),
+            collate_fn=PaddingCollate(config.data.val.transform[2].patch_size),
             num_workers=self.num_workers
         )
 

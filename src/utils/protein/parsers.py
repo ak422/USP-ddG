@@ -214,7 +214,7 @@ def parse_biopython_structure(entity, interface_flag, esm2, chains_ordered, unkn
             continue
         else:
             data_chains_dict[chain_nb] = data
-        chain_nb += 1
+        # chain_nb += 1
 
     for _, data in data_chains_dict.items():
         if len(data.aa) == 0:
