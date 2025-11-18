@@ -289,7 +289,7 @@ def split_cath_domains(prior_dir, df, csv_path):
     # read cath_label from file
     source_df_path = csv_path.parent.parent / csv_path.name
     source_df = pd.read_csv(source_df_path, sep=',')
-    if csv_path.exists():
+    if csv_path.exists() and source_df_path.exists():
         df = pd.read_csv(csv_path, sep=',')
         df.replace("1.00E+96", "1E96", inplace=True)
         df.replace("1.00E+50", "1E50", inplace=True)
@@ -306,7 +306,7 @@ def split_cath_domains(prior_dir, df, csv_path):
                 for col in ['cath_label_index']:
                     df.at[idx, col] = mapping_dict[pdb_id][col]
         df.to_csv(csv_path, index=False)
-    else:
+    elif source_df_path.exists():
         shutil.copy(source_df_path, csv_path.parent)
         df = pd.read_csv(csv_path, sep=',')
         df.replace("1.00E+96", "1E96", inplace=True)
@@ -317,7 +317,7 @@ def split_cath_domains(prior_dir, df, csv_path):
 def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb_mt_dir, block_list={'1KBH'}):
     source_df_path = csv_path.parent.parent / csv_path.name
     source_df = pd.read_csv(source_df_path, sep=',')
-    if csv_path.exists():
+    if csv_path.exists() and source_df_path.exists():
         df = pd.read_csv(csv_path, sep=',')
         df.replace("1.00E+96", "1E96", inplace=True)
         df.replace("1.00E+50", "1E50", inplace=True)
@@ -333,7 +333,7 @@ def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb
             if pdb_id in mapping_dict:
                 for col in ['wt_scores_cycle', 'mut_scores_cycle']:
                     df.at[idx, col] = mapping_dict[pdb_id][col]
-    else:
+    elif source_df_path.exists():
         shutil.copy(source_df_path, csv_path.parent)
         df = pd.read_csv(csv_path, sep=',')
         df.replace("1.00E+96", "1E96", inplace=True)
