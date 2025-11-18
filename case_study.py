@@ -237,7 +237,7 @@ if __name__ == '__main__':
         dataset,
         batch_size=config.data.batch_size,
         shuffle=False,
-        collate_fn=PaddingCollate(config.data.patch_size),
+        collate_fn=PaddingCollate(),
         num_workers=args.num_workers,
     )
 

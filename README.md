@@ -22,14 +22,21 @@ To install USP-ddG, first clone this repository
 git clone https://github.com/ak422/USP-ddG.git
 ```
 
-To install the necessary python dependencies, then use the file `env.yml to create the environment
+To install the necessary python dependencies, then use the file `env.yml` to create the environment
 
 ```bash
 conda env create -f env.yml
 conda activate USP-ddG
 ```
 
-The default PyTorch version is 2.3.1, python version is 3.10, and cudatoolkit version is 11.3.1. They can be changed in [`env.yml`](./env.yml).
+or
+
+```bash
+mamba env create -f env.yml
+conda activate USP-ddG
+```
+
+The default PyTorch version is 2.1.2, python version is 3.10, and cudatoolkit version is 11.8. They can be changed in [`env.yml`](./env.yml).
 
 #### Preparation of processed dataset
 

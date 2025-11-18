@@ -147,6 +147,7 @@ if __name__ == '__main__':
                 scheduler.step()
 
         time_backward_end = current_milli_time()
+        logger.info(f'[epoch {epoch}/{config.train.max_epochs} fold {fold+1}/{config.train.num_cvfolds}] mean loss {mean_loss.item():.4f}')
 
         if epoch >= config.train.early_stopping_epoch and early_stopping.early_stop == False:
             early_stopping(mean_loss, model, fold)

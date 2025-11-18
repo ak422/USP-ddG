@@ -15,10 +15,8 @@ DEFAULT_PAD_VALUES = {
 }
 
 class PaddingCollate(object):
-
-    def __init__(self, patch_size, length_ref_key='aa', pad_values=DEFAULT_PAD_VALUES, eight=True):
+    def __init__(self, length_ref_key='aa', pad_values=DEFAULT_PAD_VALUES, eight=True):
         super().__init__()
-        self.patch_size = patch_size
         self.length_ref_key = length_ref_key
         self.pad_values = pad_values
         self.eight = eight
@@ -65,14 +63,9 @@ class PaddingCollate(object):
 
     def __call__(self, data_list):
         max_length = max([data["wt"][self.length_ref_key].size(0) for data in data_list])
-        if max_length < self.patch_size:
-            max_length = self.patch_size
+        max_length = math.ceil(max_length / 8) * 8
 
         keys = self._get_common_keys(data_list)
-        
-        if self.eight:
-            max_length = math.ceil(max_length / 8) * 8
-
         data_list_padded = []
         for data in data_list:
             data_dict = {}

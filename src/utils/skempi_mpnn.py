@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import math
 from sklearn.metrics import roc_auc_score, precision_score, recall_score
+from sklearn.exceptions import UndefinedMetricWarning
+import warnings
 from sklearn.linear_model import LinearRegression
 from tqdm.auto import tqdm
 import torch
@@ -118,7 +120,7 @@ class SkempiDatasetManager(object):
         train_loader = DataLoader(
             train_dataset,
             batch_size=config.train.batch_size,
-            collate_fn=PaddingCollate(config.data.train.transform[2].patch_size),
+            collate_fn=PaddingCollate(),
             # shuffle=True,
             sampler=sampler,
             shuffle=False,    # 采样器已经控制顺序，无需再 shuffle
@@ -129,7 +131,7 @@ class SkempiDatasetManager(object):
             val_dataset, 
             batch_size=config.train.batch_size,
             shuffle=False,
-            collate_fn=PaddingCollate(config.data.val.transform[2].patch_size),
+            collate_fn=PaddingCollate(),
             num_workers=self.num_workers
         )
 
@@ -240,10 +242,12 @@ def permutation_correlations(df, return_details=False):
 def overall_auroc(df):
     try:
         # Only one class present
-        score = roc_auc_score(
-            (df['ddG'] > 0).to_numpy(),
-            df['ddG_pred'].to_numpy()
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+            score = roc_auc_score(
+                (df['ddG'] > 0).to_numpy(),
+                df['ddG_pred'].to_numpy()
+            )
     except ValueError:
         score = np.nan
     return {

@@ -18,6 +18,7 @@ import numpy as np
 from pymol import cmd
 import h5py
 import re
+import shutil
 from pathlib import Path
 import networkx as nx
 from functools import partial
@@ -279,16 +280,15 @@ def split_cath_domains(prior_dir, df, csv_path):
                 new_df.loc[len(new_df) - 1, 'cath_fold'] = 'train'
                 new_df.loc[len(new_df) - 1, 'cath_label_index'] = cath_label_dict[cath_class[complex.lower()]]
             elif cath_domain in list(test_df['Node']):
-                new_df.loc[len(new_df)] = row  # ak422@163.com
+                new_df.loc[len(new_df)] = row
                 new_df.loc[len(new_df) - 1, 'cath_fold'] = 'val'
                 new_df.loc[len(new_df) - 1, 'cath_label_index'] = cath_label_dict[cath_class[complex.lower()]]
             break
     new_df.to_csv(csv_path, index=False)
-    print('train size:', len(new_df[new_df['cath_fold'].str.contains('train', na=False, case=False)]))
-    print('test size:', len(new_df[new_df['cath_fold'].str.contains('val', na=False, case=False)]))
-def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb_mt_dir, block_list={'1KBH'}):
-    import shutil
+
+    # read cath_label from file
     source_df_path = csv_path.parent.parent / csv_path.name
+    source_df = pd.read_csv(source_df_path, sep=',')
     if csv_path.exists():
         df = pd.read_csv(csv_path, sep=',')
         df.replace("1.00E+96", "1E96", inplace=True)
@@ -296,7 +296,34 @@ def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb
 
         # 将source 复制到 csv_path
         mapping_dict = {}
-        source_df = pd.read_csv(source_df_path, sep=',')
+        for _, row in source_df.iterrows():
+            pdb_id = row['#Pdb']
+            mapping_dict[pdb_id] = {col: row[col] for col in ['cath_label_index']}
+        # 根据映射字典填充数据
+        for idx, row in df.iterrows():
+            pdb_id = row['#Pdb']
+            if pdb_id in mapping_dict:
+                for col in ['cath_label_index']:
+                    df.at[idx, col] = mapping_dict[pdb_id][col]
+        df.to_csv(csv_path, index=False)
+    else:
+        shutil.copy(source_df_path, csv_path.parent)
+        df = pd.read_csv(csv_path, sep=',')
+        df.replace("1.00E+96", "1E96", inplace=True)
+        df.replace("1.00E+50", "1E50", inplace=True)
+
+    print('train size:', len(new_df[new_df['cath_fold'].str.contains('train', na=False, case=False)]))
+    print('test size:', len(new_df[new_df['cath_fold'].str.contains('val', na=False, case=False)]))
+def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb_mt_dir, block_list={'1KBH'}):
+    source_df_path = csv_path.parent.parent / csv_path.name
+    source_df = pd.read_csv(source_df_path, sep=',')
+    if csv_path.exists():
+        df = pd.read_csv(csv_path, sep=',')
+        df.replace("1.00E+96", "1E96", inplace=True)
+        df.replace("1.00E+50", "1E50", inplace=True)
+
+        # 将source 复制到 csv_path
+        mapping_dict = {}
         for _, row in source_df.iterrows():
             pdb_id = row['#Pdb']
             mapping_dict[pdb_id] = {col: row[col] for col in ['wt_scores_cycle', 'mut_scores_cycle']}
@@ -307,9 +334,10 @@ def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb
                 for col in ['wt_scores_cycle', 'mut_scores_cycle']:
                     df.at[idx, col] = mapping_dict[pdb_id][col]
     else:
-        shutil.copy(source_df, csv_path.parent)
+        shutil.copy(source_df_path, csv_path.parent)
         df = pd.read_csv(csv_path, sep=',')
-
+        df.replace("1.00E+96", "1E96", inplace=True)
+        df.replace("1.00E+50", "1E50", inplace=True)
     # ----------------------- #
     # generate cath_domain_compex
     cath_domain_complex_4 = defaultdict(list)
@@ -823,13 +851,6 @@ class SkempiDataset_lmdb(Dataset):
             else:
                 entries += complex_to_entries[cplx]
 
-        # # 向数据集写入训练和测试标记
-        # if False:
-        #     df = pd.read_csv(self.csv_path, sep=',')
-        #     # df[f'fold_{self.cvfold_index}'] = ""
-        #     for entry in entries:
-        #         df.loc[df['#Pdb'] == entry['pdbcode'],f'fold_{self.cvfold_index}'] = self.split
-        #     df.to_csv(self.csv_path, index=False)
         self.entries = entries
         
     def _preprocess_entries(self):
@@ -917,8 +938,6 @@ class SkempiDataset_lmdb(Dataset):
 
         with open(self.keys_path, 'wb') as f:
             pickle.dump(keys, f)
-        # with open(self.chains_path, 'wb') as f:
-        #     pickle.dump(chains, f)
 
     def _connect_db(self):
         assert self.db_conn is None
