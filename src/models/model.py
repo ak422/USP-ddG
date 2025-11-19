@@ -1028,19 +1028,7 @@ class MoE_ddG_NET(nn.Module):
         neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:2] + [-1])
         # 　增加可学习参数
         neighbor_features = neighbor_features + self.enc_centrality.unsqueeze(0)
-
-        neighbor_sum = torch.sum(neighbor_features, dtype=torch.float16, dim=-1)
-        centrality_norm = torch.zeros_like(neighbor_sum)
-        batch_indices, seq_indices = mask.nonzero(as_tuple=True)
-        if len(batch_indices) > 0:
-            # 按样本分组处理
-            for i in range(neighbor_sum.shape[0]):
-                sample_mask = (batch_indices == i)
-                if sample_mask.any():
-                    valid_seq_indices = seq_indices[sample_mask]
-                    valid_values = neighbor_sum[i][valid_seq_indices]
-                    normalized_values = torch.nn.functional.normalize(valid_values.unsqueeze(0), dim=-1).squeeze(0)
-                    centrality_norm[i][valid_seq_indices] = normalized_values
+        centrality_norm = torch.nn.functional.normalize(torch.sum(neighbor_features, dtype=torch.float16,dim=-1), dim=-1) * mask
 
         return centrality_norm[:, :, None]
 
