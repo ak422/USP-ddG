@@ -79,8 +79,8 @@ train:
     loss_foldx: 1.0
     loss_cath: 1.0
     loss_boltzmann: 1.0
-  max_epochs: 150
-  early_stopping_epoch: 80
+  max_epochs: 100
+  early_stopping_epoch: 50
   val_freq: 5
   batch_size: 12
   seed: 2024
