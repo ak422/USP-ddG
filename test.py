@@ -24,7 +24,7 @@ from collections import defaultdict
 from easydict import EasyDict
 from src.utils.transforms._base import _get_CB_positions
 
-from src.utils.misc import load_config
+from src.utils.misc import load_config, seed_all
 from src.utils.data_skempi_mpnn import PaddingCollate
 from src.utils.train_mpnn import *
 
@@ -81,6 +81,7 @@ if __name__ == '__main__':
     for checkpoint in config.checkpoints:
         ckpt.append(torch.load(checkpoint, map_location=args.device, weights_only=False))
     config_model = ckpt[0]['config']
+    seed_all(config_model.train.seed)
 
     cv_mgr = CrossValidation(
         model_factory=MoE_ddG_NET,

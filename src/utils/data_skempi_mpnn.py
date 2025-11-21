@@ -103,14 +103,19 @@ MPNN_PAD_VALUES = {
         }
 
 class MPNNPaddingCollate(PaddingCollate):
-    def __init__(self, length_ref_key='aa', pad_values=MPNN_PAD_VALUES):
-        super().__init__(length_ref_key=length_ref_key, pad_values=pad_values)
+    def __init__(self, patch_size, length_ref_key='aa', pad_values=MPNN_PAD_VALUES):
+        super().__init__(patch_size, length_ref_key=length_ref_key, pad_values=pad_values)
+        self.patch_size = patch_size
         self.length_ref_key = length_ref_key
         self.pad_values = pad_values
 
     def __call__(self, data_list):
         max_length = max([data[self.length_ref_key].size(0) for data in data_list])
-        max_length = math.ceil(max_length / 8) * 8
+        # max_length = math.ceil(max_length / 8) * 8
+        if max_length < self.patch_size:
+            max_length = self.patch_size
+        if self.eight:
+            max_length = math.ceil(max_length / 8) * 8
 
         data_list_padded = []
         num_mut_chains = []

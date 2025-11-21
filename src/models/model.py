@@ -1082,7 +1082,6 @@ class MoE_ddG_NET(nn.Module):
     def dihedral_encode(self, batch, code_idx):
         mask_residue = batch['mask']
         chi = self._random_flip_chi(batch['chi'], batch['chi_alt'])
-        # chi_select = chi * (1 - batch['mut_flag'].float())[:, :, None]
         if self.training:
             chi_select = self.chi_mask(chi, batch, mask_single=3, mask_multi=3, mask_other=1)
         else:
