@@ -169,7 +169,6 @@ class CaseDataset(Dataset):
                 data_wt[i]['is_binding'] = torch.ones_like(data_wt[i]['aa'])
                 data_mt[i]['is_binding'] = torch.ones_like(data_mt[i]['aa'])
 
-        random.shuffle(chains_list)
         for i in chains_list:
             if isinstance(data_wt[i], EasyDict):
                 for k, v in data_wt[i].items():
