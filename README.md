@@ -1,6 +1,18 @@
-### USP-ddG network
+### USP-ddG: A Unified Structural Paradigm with Data Efficacy and Mixture-of-Experts for Predicting Mutational Effects on Protein-Protein Interactions
 
 ---
+
+<p align="center">
+  <a>
+    <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+  </a>
+  <a>
+    <img alt="Openreview" src="https://img.shields.io/badge/review-UnderReview-blue">
+  </a>
+  <a href="https://doi.org/10.1101/2025.11.09.687124">
+    <img alt="Paper URL" src="https://img.shields.io/badge/bioRxiv-10.1101/2025.11.09.687124-B31B1B.svg">
+  </a>
+</p>
 
 #### Description
 
@@ -11,8 +23,6 @@ In this work, we present USP-ddG, a unified structural paradigm for $\Delta \Del
 Overview of our **USP-ddG** architecture is shown below.
 
 <div align="center"><img src="./assets/cover.png" alt="cover" style="width:85%;" /></div>
-
-
 
 #### Installation
 
@@ -103,3 +113,18 @@ python case_study.py ./configs/inference/case_study_S285.yml --device cuda:0
 ```bash
 python train.py ./configs/train/CATH-MoE.yml --device cuda:0
 ```
+
+## Citations
+
+If you use this code or the models in your research, please cite the following paper:
+
+```
+@article{yu2025usp,
+  title={USP-ddG: A Unified Structural Paradigm with Data Efficacy and Mixture-of-Experts for Predicting Mutational Effects on Protein-Protein Interactions},
+  author={Guanglei Yu and Xuehua Bi and Qichang Zhao and Jianxin Wang},
+  journal={bioRxiv},
+  pages={2025--11},
+  year={2025},
+}
+```
+
