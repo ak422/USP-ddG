@@ -114,6 +114,12 @@ python case_study.py ./configs/inference/case_study_S285.yml --device cuda:0
 python train.py ./configs/train/CATH-MoE.yml --device cuda:0
 ```
 
+##### Evaluate USP-ddG in a zero-shot setting using the provided PDB file and mutation list
+
+```
+python zero_shot.py ./configs/inference/zero_shot.yml  --device cuda:0
+```
+
 ## Citations
 
 If you use this code or the models in your research, please cite the following paper:

@@ -1,0 +1,49 @@
+# python zero_shot.py ./configs/inference/zero_shot.yml  --device cuda:2
+checkpoints:
+  - ./trained_models/case_study.pt
+
+pdb_wt_path: ./data/zero_shot/1N8Z.pdb
+cache_dir: ./data/zero_shot
+partner1: HL
+partner2: A
+ddG: -0.723782226
+individual_list: ./data/zero_shot/individual_list.txt
+
+data:
+  transform:
+    - type: select_atom
+      resolution: backbone+CB
+    - type: add_atom_noise
+      noise_backbone: 0.0
+      noise_sidechain: 0.0
+    - type: selected_region_fixed_size_patch
+      select_attr: mut_flag
+      patch_size:  &patch_size 256
+  batch_size: 1
+  patch_size: *patch_size
+
+# ProteinMPNN
+mode: case_study
+num_cvfolds: 1
+patch_size: 128
+node_feat_dim: 256
+pair_feat_dim: 64
+knn: 15
+cutoff: 15
+num_embeddings: 256
+loss_weight: 0.005
+commitment_cost: 0.25
+mask_ratio: 0.1
+pre_iter: 2000
+weight_decay: 0.0
+seed: 2022
+
+ca_only: false
+hidden_dim: 128
+num_layers: 3
+backbone_noise: 0.0
+num_edges: 48
+
+loss_weight_boltzmann: 1.0
+ckpt_path: ./ckpt/soluble_model_weights/v_48_020.pt
+sft_ckpt_path: ./ckpt/BA-DDG-ddg_model.ckpt
