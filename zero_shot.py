@@ -37,6 +37,10 @@ from src.models.model import MoE_ddG_NET
 from src.utils.skempi_mpnn import eval_skempi_three_modes, eval_HER2_modes, eval_permutation_modes
 from src.datasets.InterfaceResidues import interfaceResidues
 from transformers import AutoTokenizer, EsmModel
+from transformers import logging
+# 隐藏所有Transformers的警告信息
+logging.set_verbosity_error()
+
 from src.utils.misc import  current_milli_time
 from protein_mpnn_utils import ProteinMPNN, _scores
 import multiprocessing as mp
@@ -347,7 +351,7 @@ class CaseDataset(Dataset):
         # generate esm2 emebddings
         self.generate_esm2(pdbcode_list, self.esm2_650M_cache)
 
-        for (pdbcode, pdb_wt_path, pdb_mt_path, ligand, receptor)  in tqdm(pdbcode_list, desc='Structures'):
+        for (pdbcode, pdb_wt_path, pdb_mt_path, ligand, receptor)  in pdbcode_list:
             if not os.path.exists(pdb_wt_path):
                 print(f'[WARNING] PDB not found: {pdb_wt_path}.')
                 continue
@@ -368,7 +372,7 @@ class CaseDataset(Dataset):
         with h5py.File(esm2_650M_cache, "w") as h5file:
             h5file.create_group('wt')
             h5file.create_group('mt')
-            for (pdbcode, pdb_wt_path, pdb_mt_path, ligand, receptor) in tqdm(pdbcode_list, desc=f'\033[0;37;42m ESM2 embeddings\033[0m'):
+            for (pdbcode, pdb_wt_path, pdb_mt_path, ligand, receptor) in pdbcode_list:
                 h5file['wt'].create_group(f'{pdbcode}')
                 h5file['mt'].create_group(f'{pdbcode}')
                 # generate sequences
