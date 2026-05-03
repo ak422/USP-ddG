@@ -994,6 +994,7 @@ class MoE_ddG_NET(nn.Module):
         self.foldx_scalar = nn.Parameter(torch.ones((1)))
         self.structure_scalar = nn.Parameter(torch.ones((1)))
         self.cath_scalar = nn.Parameter(torch.ones((1)))
+        self.l1_scalar = nn.Parameter(torch.ones((1)))
 
         # foldx_ddg
         self.foldx_ddg = nn.Sequential(
@@ -1161,29 +1162,47 @@ class MoE_ddG_NET(nn.Module):
         h_mt = h_mt * batch_mt['mut_flag'][:, :, None]
         H_mt, H_wt = h_mt.max(dim=1)[0], h_wt.max(dim=1)[0]
 
-        ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] * self.foldx_scalar - batch_wt['inter_energy'] * self.foldx_scalar)
-        ddg_foldx_inv = self.foldx_ddg(batch_wt['inter_energy'] * self.foldx_scalar - batch_mt['inter_energy'] * self.foldx_scalar)
-        loss_foldx = self.loss_cal(ddg_foldx, ddg_foldx_inv, batch['ddG'], is_single, num_single, num_multi)
+        # ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] * self.foldx_scalar - batch_wt['inter_energy'] * self.foldx_scalar)
+        # ddg_foldx_inv = self.foldx_ddg(batch_wt['inter_energy'] * self.foldx_scalar - batch_mt['inter_energy'] * self.foldx_scalar)
+        # loss_foldx = self.loss_cal(ddg_foldx, ddg_foldx_inv, batch['ddG'], is_single, num_single, num_multi)
+        #
+        # wt_scores_cycle = batch_wt['wt_scores_cycle'] * self.boltzmann_scalar
+        # mut_scores_cycle = batch_mt['mut_scores_cycle'] * self.boltzmann_scalar
+        # loss_boltzmann = F.mse_loss(mut_scores_cycle - wt_scores_cycle, batch['ddG'])
+        #
+        # ddg_structure = self.ddg_readout(H_mt * self.structure_scalar - H_wt * self.structure_scalar)
+        # ddg_structure_inv = self.ddg_readout(H_wt * self.structure_scalar - H_mt * self.structure_scalar)
+        # loss_structure = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
 
-        wt_scores_cycle = batch_wt['wt_scores_cycle'] * self.boltzmann_scalar
-        mut_scores_cycle = batch_mt['mut_scores_cycle'] * self.boltzmann_scalar
-        loss_boltzmann = F.mse_loss(mut_scores_cycle - wt_scores_cycle, batch['ddG'])
+        ddg_foldx = self.foldx_ddg(batch_mt['inter_energy']  - batch_wt['inter_energy'])* self.foldx_scalar
+        ddg_foldx_inv = self.foldx_ddg(batch_wt['inter_energy'] - batch_mt['inter_energy'])* self.foldx_scalar
+        ddg_proteinmpnn =  (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle'])* self.boltzmann_scalar
+        ddg_proteinmpnn_inv = ( batch_wt['wt_scores_cycle'] - batch_mt['mut_scores_cycle'])* self.boltzmann_scalar
+        ddg_structure = self.ddg_readout(H_mt - H_wt)* self.structure_scalar
+        ddg_structure_inv = self.ddg_readout(H_wt - H_mt) * self.structure_scalar
 
-        ddg_structure = self.ddg_readout(H_mt * self.structure_scalar - H_wt * self.structure_scalar)
-        ddg_structure_inv = self.ddg_readout(H_wt * self.structure_scalar - H_mt * self.structure_scalar)
-        loss_structure = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
+        ddg_pred_SS = ddg_foldx + ddg_proteinmpnn
+        ddg_pred_SS_inv = ddg_foldx_inv + ddg_proteinmpnn_inv
+        loss_mse_SS = (F.mse_loss(ddg_pred_SS, batch['ddG']) + F.mse_loss(ddg_pred_SS_inv, -batch['ddG']))/2
+        loss_mse_CE = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
+        # loss_mse= F.l1_loss(ddg_pred_SS, ddg_structure, reduction='mean')
 
         # cath domain classifier
-        logits_wt = self.cath_classifier(H_wt * self.cath_scalar) # {0:0,1:1,2:2,3:3,4:4,6:5}
+        logits_wt = self.cath_classifier(H_wt * self.cath_scalar)
         logits_mt = self.cath_classifier(H_mt * self.cath_scalar)
         loss_cath = (self.BCEWithLogLoss(input=logits_wt, target=batch_wt['cath_domain']) + \
                     self.BCEWithLogLoss(input=logits_mt, target=batch_mt['cath_domain']))/2
 
+        # loss_stack = {
+        #     'loss_structure': loss_structure,
+        #     'loss_foldx': loss_foldx,
+        #     'loss_cath': loss_cath,
+        #     'loss_boltzmann': loss_boltzmann,
+        # }
         loss_stack = {
-            'loss_structure': loss_structure,
-            'loss_foldx': loss_foldx,
+            'loss_mse_SS': loss_mse_SS,
+            'loss_mse_CE': loss_mse_CE,
             'loss_cath': loss_cath,
-            'loss_boltzmann': loss_boltzmann,
         }
 
         return loss_stack
@@ -1197,13 +1216,18 @@ class MoE_ddG_NET(nn.Module):
         h_mt = h_mt * batch_mt['mut_flag'][:, :, None]
         H_mt, H_wt = h_mt.max(dim=1)[0], h_wt.max(dim=1)[0]
 
-        ddg_structure = self.ddg_readout(H_mt - H_wt)
-        ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy'])
-        ddg_boltzmann = batch_mt['mut_scores_cycle'] * self.boltzmann_scalar - batch_wt['wt_scores_cycle'] * self.boltzmann_scalar
-        ddg_pred = ddg_structure + ddg_foldx + ddg_boltzmann
+        # ddg_structure = self.ddg_readout(H_mt - H_wt)
+        # ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy'])
+        # ddg_boltzmann = batch_mt['mut_scores_cycle'] * self.boltzmann_scalar - batch_wt['wt_scores_cycle'] * self.boltzmann_scalar
+        # ddg_pred = ddg_structure + ddg_foldx + ddg_boltzmann
+        ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy'])* self.foldx_scalar
+        ddg_proteinmpnn = (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle']) * self.boltzmann_scalar
+        ddg_structure = self.ddg_readout(H_mt - H_wt)* self.structure_scalar
+        ddg_pred = (ddg_foldx + ddg_proteinmpnn + ddg_structure)/2
 
         out_dict = {
             'ddG_pred': ddg_pred,
             'ddG_true': batch['ddG'],
         }
+
         return out_dict

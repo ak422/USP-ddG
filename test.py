@@ -83,58 +83,59 @@ if __name__ == '__main__':
     config_model = ckpt[0]['config']
     seed_all(config_model.train.seed)
 
-    cv_mgr = CrossValidation(
-        model_factory=MoE_ddG_NET,
-        config=config_model,
-        early_stoppingdir=config_model.early_stoppingdir,
-        num_cvfolds=config_model.train.num_cvfolds
-    ).to(args.device)
+    # cv_mgr = CrossValidation(
+    #     model_factory=MoE_ddG_NET,
+    #     config=config_model,
+    #     early_stoppingdir=config_model.early_stoppingdir,
+    #     num_cvfolds=config_model.train.num_cvfolds
+    # ).to(args.device)
+    #
+    # dataset_mgr = SkempiDatasetManager(
+    #     # config_model,
+    #     config,
+    #     split_seed=config_model.train.seed,
+    #     num_cvfolds=config_model.train.num_cvfolds,
+    #     num_workers=args.num_workers,
+    # )
+    #
+    # results = []
+    # for fold in range(config_model.train.num_cvfolds):
+    #     results_fold = []
+    #     for i in range(len(ckpt)):
+    #         cv_mgr.load_state_dict(ckpt[i]['model'], )
+    #         model, _, _, _ = cv_mgr.get(fold)
+    #         model.eval()
+    #         with torch.no_grad():
+    #             for j, batch in enumerate(tqdm(dataset_mgr.get_val_loader(fold), desc=f'\033[0;37;42m Fold {fold+1}/{config_model.train.num_cvfolds} Model {i+1}/{len(ckpt)} \033[0m', dynamic_ncols=True, bar_format="{l_bar}%s{bar}%s{r_bar}" % (Fore.WHITE, Fore.RESET))):
+    #                 # Prepare data
+    #                 batch = recursive_to(batch, args.device)
+    #
+    #                 # Forward pass
+    #                 output_dict = model.inference(batch)
+    #                 for pdbcode, protein_group, complex_PPI, mutstr, ddg_true, ddg_pred in zip(batch["wt"]['#Pdb'],batch["wt"]['protein_group'],batch["wt"]['complex_PPI'],batch["wt"]['mutstr'],output_dict['ddG_true'],output_dict['ddG_pred']):
+    #                     results_fold.append({
+    #                         'pdbcode': pdbcode,
+    #                         'protein_group': protein_group,
+    #                         'complex_PPI': complex_PPI,
+    #                         'mutstr': mutstr,
+    #                         'num_muts': len(mutstr.split(',')),
+    #                         'ddG': ddg_true.item(),
+    #                         'ddG_pred': ddg_pred.item()
+    #                     })
+    #     results_fold = pd.DataFrame(results_fold)
+    #     results_fold.to_csv('five-models.csv', index=False)
+    #     results_fold = results_fold.groupby(['pdbcode', 'complex_PPI', 'protein_group']).agg(ddG_pred_mean=("ddG_pred", "mean"),
+    #                                                                           ddG=("ddG", "mean"),
+    #                                                                           num_muts=("num_muts", "mean")).reset_index()
+    #     results_fold['ddG_pred'] = results_fold['ddG_pred_mean']
+    #     results.extend(results_fold.to_dict(orient='records'))
+    #
+    # results = pd.DataFrame(results)
+    # results.replace("1.00E+96", "1E96", inplace=True)
+    # results.replace("1.00E+50", "1E50", inplace=True)
+    # results.to_csv(args.output_results, index=False)
 
-    dataset_mgr = SkempiDatasetManager(
-        # config_model,
-        config,
-        split_seed=config_model.train.seed,
-        num_cvfolds=config_model.train.num_cvfolds,
-        num_workers=args.num_workers,
-    )
-
-    results = []
-    for fold in range(config_model.train.num_cvfolds):
-        results_fold = []
-        for i in range(len(ckpt)):
-            cv_mgr.load_state_dict(ckpt[i]['model'], )
-            model, _, _, _ = cv_mgr.get(fold)
-            model.eval()
-            with torch.no_grad():
-                for j, batch in enumerate(tqdm(dataset_mgr.get_val_loader(fold), desc=f'\033[0;37;42m Fold {fold+1}/{config_model.train.num_cvfolds} Model {i+1}/{len(ckpt)} \033[0m', dynamic_ncols=True, bar_format="{l_bar}%s{bar}%s{r_bar}" % (Fore.WHITE, Fore.RESET))):
-                    # Prepare data
-                    batch = recursive_to(batch, args.device)
-
-                    # Forward pass
-                    output_dict = model.inference(batch)
-                    for pdbcode, protein_group, complex_PPI, mutstr, ddg_true, ddg_pred in zip(batch["wt"]['#Pdb'],batch["wt"]['protein_group'],batch["wt"]['complex_PPI'],batch["wt"]['mutstr'],output_dict['ddG_true'],output_dict['ddG_pred']):
-                        results_fold.append({
-                            'pdbcode': pdbcode,
-                            'protein_group': protein_group,
-                            'complex_PPI': complex_PPI,
-                            'mutstr': mutstr,
-                            'num_muts': len(mutstr.split(',')),
-                            'ddG': ddg_true.item(),
-                            'ddG_pred': ddg_pred.item()
-                        })
-        results_fold = pd.DataFrame(results_fold)
-        results_fold = results_fold.groupby(['pdbcode', 'complex_PPI', 'protein_group']).agg(ddG_pred_mean=("ddG_pred", "mean"),
-                                                                              ddG=("ddG", "mean"),
-                                                                              num_muts=("num_muts", "mean")).reset_index()
-        results_fold['ddG_pred'] = results_fold['ddG_pred_mean']
-        results.extend(results_fold.to_dict(orient='records'))
-
-    results = pd.DataFrame(results)
-    results.replace("1.00E+96", "1E96", inplace=True)
-    results.replace("1.00E+50", "1E50", inplace=True)
-    results.to_csv(args.output_results, index=False)
-
-    results = pd.read_csv(args.output_results)
+    results = pd.read_csv('five-models.csv')
     results = results.groupby(['pdbcode', 'complex_PPI', 'protein_group']).agg(ddG_pred_mean=("ddG_pred", "mean"),
                                                          ddG=("ddG", "mean"),
                                                          num_muts=("num_muts", "mean")).reset_index()

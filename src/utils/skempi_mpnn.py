@@ -13,6 +13,7 @@ import torch
 import os
 import pickle
 import random
+import logging
 
 from src.utils.misc import inf_iterator, BlackHole
 from src.utils.data_skempi_mpnn import PaddingCollate
@@ -23,14 +24,56 @@ from torch.utils.data.sampler import Sampler
 from collections import defaultdict
 from collections import Counter
 
+# class ClassSequentialSampler(Sampler):
+#     def __init__(self, labels, shuffle_classes=False, shuffle_samples=True, logger=None):
+#         """
+#         Args:
+#             labels (list): 数据集的结构域标签列表，如 [0, 1, 2, 0, 1, 2, ...]
+#             shuffle_classes (bool): 是否打乱类别顺序（默认 True）
+#             shuffle_samples (bool): 是否打乱当前类别内的样本顺序（默认 True）
+#         """
+#         self.labels = labels
+#         self.shuffle_classes = shuffle_classes
+#         self.shuffle_samples = shuffle_samples
+#
+#         # 构建类别到样本索引的映射
+#         self.label_to_indices = defaultdict(list)
+#         for idx, label in enumerate(labels):
+#             self.label_to_indices[label].append(idx)
+#         # {cath-class: lable-index}
+#         cath_index_dict = {3: 0, 2: 1, 1: 2, 4: 3, 0: 4, 6: 5}
+#         # self.cath_index = [[0], [2], [1], [3], [4], [5]]
+#         self.cath_index = [[5], [1], [4], [0], [2], [3]]
+#         import time
+#         # random.seed(int(time.time()))
+#         # random.shuffle(self.cath_index)
+#         logger.info(self.cath_index)
+#
+#         self.num_classes = len(self.cath_index)
+#         self.num_samples = len(labels)
+#
+#     def __iter__(self):
+#         # 1. 打乱类别顺序（如果启用）
+#         if self.shuffle_classes:
+#             np.random.shuffle(self.cath_index)
+#
+#         # 2. 遍历每个类别，并采样当前类别的样本
+#         indices = []
+#         for cls in self.cath_index:
+#             cls_indices = []
+#             for cl in cls:
+#                 cls_indices.extend(self.label_to_indices[cl])
+#             if self.shuffle_samples:
+#                 np.random.shuffle(cls_indices)
+#             indices.extend(cls_indices)
+#
+#         return iter(indices)
+#
+#     def __len__(self):
+#         return self.num_samples
+
 class ClassSequentialSampler(Sampler):
     def __init__(self, labels, shuffle_classes=False, shuffle_samples=True, logger=None):
-        """
-        Args:
-            labels (list): 数据集的结构域标签列表，如 [0, 1, 2, 0, 1, 2, ...]
-            shuffle_classes (bool): 是否打乱类别顺序（默认 True）
-            shuffle_samples (bool): 是否打乱当前类别内的样本顺序（默认 True）
-        """
         self.labels = labels
         self.shuffle_classes = shuffle_classes
         self.shuffle_samples = shuffle_samples
@@ -39,27 +82,113 @@ class ClassSequentialSampler(Sampler):
         self.label_to_indices = defaultdict(list)
         for idx, label in enumerate(labels):
             self.label_to_indices[label].append(idx)
-        # {cath-class: lable-index}
+
         cath_index_dict = {3: 0, 2: 1, 1: 2, 4: 3, 0: 4, 6: 5}
-        self.cath_index = [[0], [2], [1], [3], [4], [5]]
+        self.cath_index = [[1], [5], [2], [0]]
+        # import time
+        # random.seed(int(time.time()))
+        # random.shuffle(self.cath_index)
+        # logger.info(self.cath_index)
+        reverse_dict = {v: k for k, v in cath_index_dict.items()}
+        mapped_keys = [[reverse_dict[idx[0]]] for idx in self.cath_index]
+        logger.info(mapped_keys)
 
         self.num_classes = len(self.cath_index)
         self.num_samples = len(labels)
+        self.logger = logger
+
+        # ===== 新增：epoch 计数器 =====
+        self.epoch_count = 0
 
     def __iter__(self):
-        # 1. 打乱类别顺序（如果启用）
+        # epoch 计数递增
+        self.epoch_count += 1
+        is_first_epoch = (self.epoch_count == 1)
+
         if self.shuffle_classes:
             np.random.shuffle(self.cath_index)
 
-        # 2. 遍历每个类别，并采样当前类别的样本
+        # 遍历每个类别，并采样当前类别的样本
         indices = []
+        epoch_order_log = []  # 用于收集第一个 epoch 的详细顺序
+
         for cls in self.cath_index:
             cls_indices = []
+            class_labels = []
             for cl in cls:
                 cls_indices.extend(self.label_to_indices[cl])
-            if self.shuffle_samples:
+                class_labels.append(cl)
+
+            if self.shuffle_samples and not is_first_epoch:
                 np.random.shuffle(cls_indices)
+
+            # 记录第一个 epoch 的类别和样本信息
+            if is_first_epoch:
+                epoch_order_log.append({
+                    'class': cls,
+                    'class_labels': class_labels,
+                    'num_samples': len(cls_indices),
+                    'sample_indices': cls_indices.copy()
+                })
+
             indices.extend(cls_indices)
+
+        # ===== 新增：第一个 epoch 将完整顺序写入文件 =====
+        if is_first_epoch:
+            # 构建输出内容
+            lines = []
+            lines.append("=" * 70)
+            lines.append(f"[ClassSequentialSampler] 第 1 个 Epoch 的采样顺序")
+            lines.append(f"生成时间: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            lines.append(f"类别遍历顺序 (cath_index): {self.cath_index}")
+            lines.append(f"总样本数: {len(indices)}")
+            lines.append("-" * 70)
+
+            all_sample_indices = []
+            for i, info in enumerate(epoch_order_log):
+                lines.append(f"Step {i + 1}: CATH 类别 {info['class']} (标签 {info['class_labels']}), "
+                             f"样本数 {info['num_samples']}")
+                lines.append(f"  样本索引: {info['sample_indices']}")
+                all_sample_indices.extend(info['sample_indices'])
+
+            lines.append("-" * 70)
+            lines.append(f"完整采样索引序列 (共 {len(all_sample_indices)} 个):")
+            # 每行输出 20 个索引，便于阅读
+            for i in range(0, len(all_sample_indices), 20):
+                chunk = all_sample_indices[i:i + 20]
+                lines.append(f"  [{i:5d}:{min(i + 20, len(all_sample_indices)):5d}] {chunk}")
+
+            lines.append("=" * 70)
+
+            output_text = "\n".join(lines)
+
+            # ===== 核心修改：提取 logger 日志目录 =====
+            log_dir = None
+            if self.logger is not None:
+                for handler in self.logger.handlers:
+                    if isinstance(handler, logging.FileHandler):
+                        log_dir = os.path.dirname(handler.baseFilename)
+                        break
+
+            # 回退保护：若 logger 无 FileHandler，使用当前工作目录
+            save_dir = log_dir if log_dir is not None else os.getcwd()
+
+            # 文件名固定即可（因目录已按运行隔离），或加时间戳更保险
+            output_filename = "epoch1_sample_order.txt"
+            output_path = os.path.join(save_dir, output_filename)
+
+
+            try:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(output_text)
+                print(f"\n[已保存] 第一个 epoch 的样本顺序已写入: {output_path}")
+            except Exception as e:
+                print(f"\n[保存失败] 无法写入文件 {output_path}: {e}")
+
+            # 同时写入 logger
+            if self.logger is not None:
+                self.logger.info(f"[Epoch 1] Sample order saved to {output_path}, "
+                                 f"total {len(all_sample_indices)} samples")
 
         return iter(indices)
 
@@ -107,7 +236,26 @@ class SkempiDatasetManager(object):
         val_cplx = set([e['complex_PPI'] for e in val_dataset.entries])
         leakage = train_cplx.intersection(val_cplx)
         assert len(leakage) == 0, f'data leakage {leakage}'
-        cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
+        # cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
+
+        import csv
+        tm_score_dict = {}
+        df = pd.read_csv('./data/SKEMPI2/TM-score.csv', sep=',')
+        df.replace("1.00E+96", "1E96", inplace=True)
+        df.replace("1.00E+50", "1E50", inplace=True)
+        for i, row in df.iterrows():
+            pdb = row['pdb']
+            tm_score = float(row['TM-score'])
+            tm_score_dict[pdb] = tm_score
+
+        # 对 entries 排序
+        train_dataset.entries.sort(
+            key=lambda x: tm_score_dict.get(x.get('complex', ''), 0),
+            reverse=True
+        )
+        sorted_data =  train_dataset.entries
+        cath_label_train = [e['cath_label_index'] for e in sorted_data]
+
 
         sampler = ClassSequentialSampler(
             labels=cath_label_train,

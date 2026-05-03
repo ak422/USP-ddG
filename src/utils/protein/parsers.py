@@ -135,7 +135,7 @@ def parse_biopython_structure(entity, interface_flag, esm2, chains_ordered, unkn
                 continue
             restype = AA(resname)
             count_aa += 1
-            if restype == AA.UNK: 
+            if restype == AA.UNK:
                 count_unk += 1
                 continue
 
@@ -232,3 +232,204 @@ def parse_biopython_structure(entity, interface_flag, esm2, chains_ordered, unkn
                 data_chains_dict[i][key] = convert_fn(data[key])
 
     return data_chains_dict, chains_list
+
+# from easydict import EasyDict
+#
+# def parse_biopython_structure(entity, interface_flag, esm2, chains_ordered, unknown_threshold=1.0):
+#
+#     interface_flag = set(interface_flag)  # 转换为 set 提升查找效率
+#
+#     # 获取所有非空链
+#     chains = [c for c in entity.get_chains() if c.id != " "]
+#
+#     # 保持 WT / MT chain 顺序一致
+#     order_dict = {c: i for i, c in enumerate(chains_ordered)}
+#     chains.sort(key=lambda c: order_dict.get(c.id, 999))
+#
+#     data_chains_dict = {}
+#     chains_list = []
+#
+#     count_unk = 0
+#     l0 = 0
+#     c = 1
+#
+#     for chain_nb, chain in enumerate(chains):
+#
+#         chain_id = chain.id
+#         chains_list.append(chain_id)
+#
+#         # 对残基排序
+#         residues = list(chain.get_residues())
+#         residues.sort(key=lambda r: (r.id[1], r.id[2]))
+#
+#         # 使用 EasyDict 以支持点访问
+#         data = EasyDict({
+#             'chain_nb': [],
+#             'resseq': [],
+#             'res_nb': [],
+#             'residue_idx': [],
+#             'seq_idx': [],
+#             'aa': [],
+#             'aa_esm2': [],
+#             'pos_heavyatom': [],
+#             'mask_heavyatom': [],
+#             'pos_allatom': [],
+#             'mask_allatom': [],
+#             'interface_flag': [],
+#             'phi': [],
+#             'phi_mask': [],
+#             'psi': [],
+#             'psi_mask': [],
+#             'omega': [],
+#             'omega_mask': [],
+#             'chi': [],
+#             'chi_alt': [],
+#             'chi_mask': [],
+#             'chi_complete': []
+#         })
+#
+#         seq_this = 0
+#         seq_idx_this = 0
+#         prev_CA = None
+#
+#         for res in residues:
+#
+#             resname = res.get_resname()
+#
+#             if not AA.is_aa(resname):
+#                 continue
+#
+#             if not (res.has_id('CA') and res.has_id('C') and res.has_id('N')):
+#                 continue
+#
+#             restype = AA(resname)
+#
+#             if restype == AA.UNK:
+#                 count_unk += 1
+#                 continue
+#
+#             resseq = int(res.id[1])
+#
+#             pos_heavyatom, mask_heavyatom, pos_allatom, mask_allatom = _get_residue_heavyatom_info(res)
+#
+#             CA = pos_heavyatom[BBHeavyAtom.CA]
+#
+#             if seq_this == 0:
+#                 seq_this = 1
+#                 seq_idx_this = 1
+#             else:
+#                 d = torch.norm(prev_CA - CA)
+#
+#                 if d <= 4.0:
+#                     seq_this += 1
+#                 else:
+#                     d_resseq = resseq - data['resseq'][-1]
+#                     seq_this += max(2, d_resseq)
+#
+#                 seq_idx_this += 1
+#
+#             prev_CA = CA
+#
+#             # 填充数据 - 使用点访问保持一致性
+#             data.chain_nb.append(chain_nb)
+#             data.aa.append(restype)
+#             # 关键修改：使用 extend 逐个添加字符，与原代码完全一致
+#             data.aa_esm2.extend(AA.three2one(resname))
+#
+#             data.pos_heavyatom.append(pos_heavyatom)
+#             data.mask_heavyatom.append(mask_heavyatom)
+#             data.pos_allatom.append(pos_allatom)
+#             data.mask_allatom.append(mask_allatom)
+#
+#             data.resseq.append(resseq)
+#             data.res_nb.append(seq_this)
+#
+#             data.residue_idx.append(100 * (c - 1) + l0 + seq_this)
+#             data.seq_idx.append(100 * (c - 1) + l0 + seq_idx_this)
+#
+#             if f"{chain_id}_{seq_this}" in interface_flag:
+#                 data.interface_flag.append(True)
+#             else:
+#                 data.interface_flag.append(False)
+#
+#             phi, psi, omega = get_backbone_torsions(res)
+#
+#             if phi is None:
+#                 data.phi.append(0.0)
+#                 data.phi_mask.append(False)
+#             else:
+#                 data.phi.append(phi)
+#                 data.phi_mask.append(True)
+#
+#             if psi is None:
+#                 data.psi.append(0.0)
+#                 data.psi_mask.append(False)
+#             else:
+#                 data.psi.append(psi)
+#                 data.psi_mask.append(True)
+#
+#             if omega is None:
+#                 data.omega.append(0.0)
+#                 data.omega_mask.append(False)
+#             else:
+#                 data.omega.append(omega)
+#                 data.omega_mask.append(True)
+#
+#             chi, chi_alt, chi_mask, chi_complete = get_chi_angles(restype, res)
+#
+#             data.chi.append(chi)
+#             data.chi_alt.append(chi_alt)
+#             data.chi_mask.append(chi_mask)
+#             data.chi_complete.append(chi_complete)
+#
+#         l0 += seq_this
+#         c += 1
+#
+#         if len(data.aa) == 0:
+#             continue
+#
+#         data_chains_dict[chain_nb] = data
+#
+#     # 关键修改：恢复 chain 空检查
+#     for _, data in data_chains_dict.items():
+#         if len(data.aa) == 0:
+#             return None, None
+#
+#     if (count_unk / l0) >= unknown_threshold:
+#         return None, None
+#
+#     # tensor 转换配置
+#     tensor_types = {
+#         'chain_nb': torch.LongTensor,
+#         'resseq': torch.LongTensor,
+#         'res_nb': torch.LongTensor,
+#         'residue_idx': torch.LongTensor,
+#         'seq_idx': torch.LongTensor,
+#         'aa': torch.LongTensor,
+#         'aa_esm2': torch.FloatTensor,
+#         'pos_heavyatom': torch.stack,
+#         'mask_heavyatom': torch.stack,
+#         'pos_allatom': torch.stack,
+#         'mask_allatom': torch.stack,
+#         'interface_flag': torch.BoolTensor,
+#         'phi': torch.FloatTensor,
+#         'phi_mask': torch.BoolTensor,
+#         'psi': torch.FloatTensor,
+#         'psi_mask': torch.BoolTensor,
+#         'omega': torch.FloatTensor,
+#         'omega_mask': torch.BoolTensor,
+#         'chi': torch.stack,
+#         'chi_alt': torch.stack,
+#         'chi_mask': torch.stack,
+#         'chi_complete': torch.BoolTensor,
+#     }
+#
+#     for i, data in data_chains_dict.items():
+#         for key, fn in tensor_types.items():
+#             if key == "aa_esm2":
+#                 # 关键修改：加上 [:] 与原代码完全一致
+#                 data[key] = fn(esm2[chains_list[i]][:])
+#             else:
+#                 data[key] = fn(data[key])
+#
+#     return data_chains_dict, chains_list
