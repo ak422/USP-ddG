@@ -75,14 +75,13 @@ data:
 
 train:
   loss_weights:
-#    loss_structure: 1.0
-#    loss_foldx: 1.0
-#    loss_cath: 1.0
-#    loss_boltzmann: 1.0
-    loss_mse_SS: 1.0
-    loss_mse_CE: 1.0
-#    loss_mse: 1.0
+    loss_structure: 1.0
+    loss_foldx: 1.0
     loss_cath: 1.0
+    loss_boltzmann: 1.0
+#    loss_mse_SS: 1.0
+#    loss_mse_CE: 1.0
+#    loss_cath: 1.0
   max_epochs: 150
   early_stopping_epoch: 100
   val_freq: 5
