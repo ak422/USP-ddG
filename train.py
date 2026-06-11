@@ -106,6 +106,7 @@ if __name__ == '__main__':
         split_seed=config.train.seed,
         num_cvfolds=config.train.num_cvfolds,
         # current_epoch=it_first,
+        device=args.device,
         num_workers=args.num_workers,
         logger=logger,
     )

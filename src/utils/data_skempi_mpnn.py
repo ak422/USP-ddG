@@ -126,7 +126,7 @@ class MPNNPaddingCollate(PaddingCollate):
                 'aa_mut': data['aa_mut'],
                 'mask': torch.ones_like(data['aa']),
                 'chain_M': data['mut_flag'],
-                'chain_encoding_all': data['chain_nb_cycle'] + 1,
+                'chain_encoding_all': data['chain_nb'] + 1,
                 # 'residue_idx': reset_residue_idx(data['res_nb']),
                 'residue_idx': data['residue_idx'],
                 'complex': data['complex'],

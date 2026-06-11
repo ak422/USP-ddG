@@ -1,8 +1,7 @@
-# training: python train.py ./configs/train/Case_study-MoE.yml --tag Case_study-MoE --device cuda:0
-# test: python test.py ./configs/train/Case_study-MoE.yml  --device cuda:0
+# training: python train.py ./configs/train/PPIformer.yml --tag PPIFORMER --device cuda:0
+# test: python test.py ./configs/train/PPIformer.yml  --device cuda:0
 checkpoints:
-  - ./trained_models/case_study.pt
-
+  - ./trained_models/PPIFORMER.pt
 early_stoppingdir: ./early_stopping
 model:
   encoder:
@@ -12,14 +11,12 @@ model:
   hidden_dim: 128
   k1: 32    # knn neighbors
   k2: 0     # long range
-  k3: 3
-  # neighbors of sequence
+  k3: 3     # neighbors of sequence
   long_range_seq: 0
   dropout: 0.1
   noise_bb: &noise_bb 0.1
   noise_sd: &noise_sd 0.2
   num_labels: 6
-
   Moe:
     task_id: 0   # test: 200
     topk: 4
@@ -60,7 +57,7 @@ data:
           patch_size: 256
     is_single: 2          # 0:single,1:multiple,2:overall
     cath_fold: False      # default: False
-    PPIformer: False       # True
+    PPIformer: True       # True
 
 train:
   loss_weights:
@@ -68,19 +65,21 @@ train:
     loss_foldx: 1.0
     loss_cath: 1.0
     loss_boltzmann: 1.0
+    loss_moe: 1.0
+
   max_epochs: 100
   early_stopping_epoch: 65
   val_freq: 5
   batch_size: 12
-  seed: 2022
+  seed: 2024
   num_cvfolds: 3
 
   max_grad_norm: 100.0
   optimizer:
     type: adam
-    lr: &lr 5.e-4     #  lr_max
-    lr_2: &lr_2 5.e-6   #  lr_max_esm2
-    lr_3: &lr_3 5.e-5   #  lr_max_foldx
+    lr: &lr 4.e-4     #  lr_max
+    lr_2: &lr_2 4.e-6   #  lr_max_esm2
+    lr_3: &lr_3 4.e-5   #  lr_max_foldx
     weight_decay: 1.e-4
     weight_decay_2: 5.e-6
     weight_decay_3: 5.e-6
@@ -91,8 +90,8 @@ train:
     warm_up_iters: 4000
     T_iters: 5000  # Cycle
     lr_max: *lr
-    lr_min: 2.e-4
+    lr_min: 0.e-4
     lr_2_max: *lr_2
-    lr_2_min: 2.e-6
+    lr_2_min: 0.e-6
     lr_3_max: *lr_3
-    lr_3_min: 2.e-5
+    lr_3_min: 0.e-5

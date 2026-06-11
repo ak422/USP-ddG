@@ -702,21 +702,37 @@ class MoEBlock(nn.Module):
         return gates, load
 
     def gshard_aux_loss(self, gates, load, alpha=1e-2):
-        # load: [n_experts]  实际被选次数
-        # gates: [B, S, n_experts]  原始 soft gate
+
+        """
+        gates: [B, T, E] soft gate probabilities
+        load : [E] hard routing counts
+        """
+
         n_experts = load.size(0)
-        total = load.sum().clamp(min=1)
-        f = load / total  # 实际负载比例
-        P = gates.mean(dim=[0, 1])  # 预测概率
-        loss = alpha * n_experts * (f * P).sum()
+
+        # hard routing statistics should not backprop
+        load_detached = load.detach()
+
+        total = load_detached.sum().clamp(min=1.0)
+
+        # expert load balance term
+        f = load_detached / total
+
+        # soft importance
+        P = gates.mean(dim=(0, 1))
+
+        loss = alpha * n_experts * torch.sum(f * P)
+
         return loss
 
     def forward(self, x: torch.Tensor):
+        aux_loss = torch.zeros(1, device=x.device)
         if self.apply_moe == True:
             if self.task_id > -1:
                 # Directly use x for gating
                 gates, load = self.noisy_top_k_gating(x, self.training, self.router_list[self.task_id],
                                                       self.w_noise_list[self.task_id])
+                aux_loss = self.gshard_aux_loss(gates, load)
 
                 # Reshape gates to [batch_size * seq_len, num_experts]
                 batch_size, seq_len, num_experts = gates.size()
@@ -744,40 +760,10 @@ class MoEBlock(nn.Module):
                 # Reshape y back to [batch_size, seq_len, input_size]
                 y = y.view(batch_size, seq_len, x.size(-1))
                 x = y
-            else:  # one router for all task
-                # Directly use x for gating
-                gates, load = self.noisy_top_k_gating(x, self.training, self.router, self.w_noise)
-
-                # Reshape gates to [batch_size * seq_len, num_experts]
-                batch_size, seq_len, num_experts = gates.size()
-                gates_reshaped = gates.view(-1, num_experts)
-
-                # Reshape x to [batch_size * seq_len, input_size]
-                x_reshaped = x.view(-1, x.size(-1))
-
-                dispatcher = SparseDispatcher(self.experts_num, gates_reshaped)
-                expert_inputs = dispatcher.dispatch(x_reshaped)
-
-                # Process expert inputs
-                expert_outputs = []
-                for i in range(self.experts_num):
-                    if expert_inputs[i].size(0) > 0:
-                        expert_output = self.adaptmlp_list[i](
-                            expert_inputs[i].view(expert_inputs[i].size(0), x.size(-1)),
-                            add_residual=False
-                        )
-                        expert_outputs.append(expert_output.view(expert_outputs[i].size(0), -1))
-
-                # Combine expert outputs
-                y = dispatcher.combine(expert_outputs)
-
-                # Reshape y back to [batch_size, seq_len, input_size]
-                y = y.view(batch_size, seq_len, x.size(-1))
-                x = y
         else:  # one adapter
             adapt_x = self.adaptmlp(x, add_residual=False)
             x = adapt_x
-        return x
+        return x, aux_loss
 
 class EncLayer(nn.Module):
     def __init__(self, num_hidden, num_in, cfg=None, dropout=0.1, num_heads=None, scale=30):
@@ -805,6 +791,7 @@ class EncLayer(nn.Module):
 
     def forward(self, h_V, h_E, E_idx, mask_V=None, mask_attend=None):
         """ Parallel computation of full transformer layer """
+        moe_loss = torch.zeros(1, device=h_V.device)
         # pre-norm
         residual = h_V
         h_V = self.maybe_layer_norm(0, h_V, before=True, after=False)
@@ -826,7 +813,7 @@ class EncLayer(nn.Module):
         # Position-wise feedforward
         dh = self.dense(h_V)                # ffn
 
-        h_MoE = self.MoE_blocks(residual)      # MoE
+        h_MoE, moe_loss = self.MoE_blocks(residual)      # MoE
         dh = self.trans(torch.cat([h_MoE, dh], dim=-1))       # ffn || MoE
 
         # ReZero
@@ -846,7 +833,7 @@ class EncLayer(nn.Module):
         h_message = self.W13(self.act(self.W12(self.act(self.W11(h_EV)))))
         h_E = residual + self.dropout(h_message)
 
-        return h_V, h_E
+        return h_V, h_E, moe_loss
 
     def maybe_layer_norm(self, i, x, before=False, after=False):
         assert before ^ after
@@ -994,7 +981,7 @@ class MoE_ddG_NET(nn.Module):
         self.foldx_scalar = nn.Parameter(torch.ones((1)))
         self.structure_scalar = nn.Parameter(torch.ones((1)))
         self.cath_scalar = nn.Parameter(torch.ones((1)))
-        self.l1_scalar = nn.Parameter(torch.ones((1)))
+        # self.moe_scalar = nn.Parameter(torch.ones((1)))
 
         # foldx_ddg
         self.foldx_ddg = nn.Sequential(
@@ -1050,7 +1037,6 @@ class MoE_ddG_NET(nn.Module):
     def chi_mask(self, chi, batch, mask_single=1, mask_multi=4, mask_other=0):
         # mask mutation site and interface
         zero_chi = torch.zeros_like(chi)
-        # mask_flag = batch['mut_flag'].float() + batch['interface_flag'].float()
         mask_flag = batch['mut_flag'].float()[:, :, None]
         if mask_other == 0:
             chi_other = chi * (1 - mask_flag)
@@ -1116,14 +1102,17 @@ class MoE_ddG_NET(nn.Module):
         h_E_seq = self.W_es(E_seq)
 
         mask = batch['mask']
+        moe_loss = torch.zeros(1, device=mask.device)
         # Encoder
         h_V_spatial = self.dihedral_encode(batch, 0)
         for i, layer in enumerate(self.encoder_layers_spatial):
-            h_V_spatial, h_E_spatial = layer(h_V_spatial, h_E_spatial, E_idx_spatial, mask, mask_spatial)
+            h_V_spatial, h_E_spatial, loss = layer(h_V_spatial, h_E_spatial, E_idx_spatial, mask, mask_spatial)
+            moe_loss = moe_loss + loss
 
         h_V_sequential = h_V_spatial
         for i, layer in enumerate(self.encoder_layers_sequential):
-            h_V_sequential, h_E_seq = layer(h_V_sequential, h_E_seq, E_idx_seq, mask, mask_seq)
+            h_V_sequential, h_E_seq, loss = layer(h_V_sequential, h_E_seq, E_idx_seq, mask, mask_seq)
+            moe_loss = moe_loss + loss
 
         h_S = self.dihedral_encode(batch, 1)
         h_V = self.single_fusion(torch.cat([h_V_spatial, h_V_sequential],dim=-1))
@@ -1138,7 +1127,7 @@ class MoE_ddG_NET(nn.Module):
         h_centrality = self.gather_centrality(batch["centrality"], E_idx, mask)
         h_V = h_V * h_centrality
 
-        return h_V
+        return h_V, moe_loss
 
     def loss_cal(self, ddg_pred, ddg_pred_inv, ddg_true, is_single, num_single, num_multi):
         loss_single = (F.mse_loss(ddg_pred * is_single, ddg_true * is_single, reduction="sum") + F.mse_loss(ddg_pred_inv * is_single,-ddg_true * is_single,reduction="sum")) / (2 * num_single)
@@ -1155,8 +1144,8 @@ class MoE_ddG_NET(nn.Module):
         num_single = torch.clamp(torch.sum(batch_wt["num_muts"] == 1), 1)
         num_multi = torch.clamp(torch.sum(batch_wt["num_muts"] > 1), 1)
 
-        h_wt = self.encode(batch_wt)
-        h_mt = self.encode(batch_mt)
+        h_wt, moe_loss_wt = self.encode(batch_wt)
+        h_mt, moe_loss_mt = self.encode(batch_mt)
 
         h_wt = h_wt * batch_wt['mut_flag'][:, :, None]
         h_mt = h_mt * batch_mt['mut_flag'][:, :, None]
@@ -1164,53 +1153,41 @@ class MoE_ddG_NET(nn.Module):
 
         ddg_foldx = self.foldx_ddg(batch_mt['inter_energy']  - batch_wt['inter_energy'] ) * self.foldx_scalar
         ddg_foldx_inv = self.foldx_ddg(batch_wt['inter_energy']  - batch_mt['inter_energy'] ) * self.foldx_scalar
-        loss_foldx = (F.mse_loss(ddg_foldx, batch['ddG']) + F.mse_loss(ddg_foldx_inv, -batch['ddG']))/2
-
         ddg_proteinmpnn =  (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle'])* self.boltzmann_scalar
         ddg_proteinmpnn_inv = ( batch_wt['wt_scores_cycle'] - batch_mt['mut_scores_cycle'])* self.boltzmann_scalar
-        loss_boltzmann = (F.mse_loss(ddg_proteinmpnn, batch['ddG']) + F.mse_loss(ddg_proteinmpnn_inv, -batch['ddG']))/2
-
         ddg_structure = self.ddg_readout(H_mt - H_wt ) * self.structure_scalar
         ddg_structure_inv = self.ddg_readout(H_wt  - H_mt ) * self.structure_scalar
-        loss_structure = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
 
-        # ddg_foldx = self.foldx_ddg(batch_mt['inter_energy']  - batch_wt['inter_energy'])* self.foldx_scalar
-        # ddg_foldx_inv = self.foldx_ddg(batch_wt['inter_energy'] - batch_mt['inter_energy'])* self.foldx_scalar
-        # ddg_proteinmpnn =  (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle'])* self.boltzmann_scalar
-        # ddg_proteinmpnn_inv = ( batch_wt['wt_scores_cycle'] - batch_mt['mut_scores_cycle'])* self.boltzmann_scalar
-        # ddg_structure = self.ddg_readout(H_mt - H_wt)* self.structure_scalar
-        # ddg_structure_inv = self.ddg_readout(H_wt - H_mt) * self.structure_scalar
-        #
-        # ddg_pred_SS = ddg_foldx + ddg_proteinmpnn
-        # ddg_pred_SS_inv = ddg_foldx_inv + ddg_proteinmpnn_inv
-        # loss_mse_SS = (F.mse_loss(ddg_pred_SS, batch['ddG']) + F.mse_loss(ddg_pred_SS_inv, -batch['ddG']))/2
-        # loss_mse_CE = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
+        # # 3 losses
+        loss_foldx = (F.mse_loss(ddg_foldx, batch['ddG']) + F.mse_loss(ddg_foldx_inv, -batch['ddG'])) / 2
+        loss_boltzmann = (F.mse_loss(ddg_proteinmpnn, batch['ddG']) + F.mse_loss(ddg_proteinmpnn_inv, -batch['ddG'])) / 2
+        # loss_structure = self.loss_cal(ddg_structure, ddg_structure_inv, batch['ddG'], is_single, num_single, num_multi)
+        loss_structure = (F.mse_loss(ddg_structure, batch['ddG']) + F.mse_loss(ddg_structure_inv, -batch['ddG'])) / 2
 
         # cath domain classifier
-        logits_wt = self.cath_classifier(H_wt * self.cath_scalar)
-        logits_mt = self.cath_classifier(H_mt * self.cath_scalar)
+        logits_wt = self.cath_classifier(H_wt ) * self.cath_scalar
+        logits_mt = self.cath_classifier(H_mt ) * self.cath_scalar
         loss_cath = (self.BCEWithLogLoss(input=logits_wt, target=batch_wt['cath_domain']) + \
                     self.BCEWithLogLoss(input=logits_mt, target=batch_mt['cath_domain']))/2
 
+        loss_moe = (moe_loss_wt + moe_loss_mt)/2
+
+        # # 3 losses
         loss_stack = {
             'loss_structure': loss_structure,
             'loss_foldx': loss_foldx,
             'loss_cath': loss_cath,
             'loss_boltzmann': loss_boltzmann,
+            'loss_moe': loss_moe,
         }
-        # loss_stack = {
-        #     'loss_mse_SS': loss_mse_SS,
-        #     'loss_mse_CE': loss_mse_CE,
-        #     'loss_cath': loss_cath,
-        # }
 
         return loss_stack
     def inference(self, batch):
         batch_wt = batch["wt"]
         batch_mt = batch["mt"]
 
-        h_wt = self.encode(batch_wt)
-        h_mt = self.encode(batch_mt)
+        h_wt, _ = self.encode(batch_wt)
+        h_mt, _ = self.encode(batch_mt)
         h_wt = h_wt * batch_wt['mut_flag'][:, :, None]
         h_mt = h_mt * batch_mt['mut_flag'][:, :, None]
         H_mt, H_wt = h_mt.max(dim=1)[0], h_wt.max(dim=1)[0]
@@ -1219,10 +1196,6 @@ class MoE_ddG_NET(nn.Module):
         ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy']) * self.foldx_scalar
         ddg_boltzmann = (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle'])* self.boltzmann_scalar
         ddg_pred = (ddg_structure + ddg_foldx + ddg_boltzmann)/3
-        # ddg_foldx = self.foldx_ddg(batch_mt['inter_energy'] - batch_wt['inter_energy'])* self.foldx_scalar
-        # ddg_proteinmpnn = (batch_mt['mut_scores_cycle'] - batch_wt['wt_scores_cycle']) * self.boltzmann_scalar
-        # ddg_structure = self.ddg_readout(H_mt - H_wt)* self.structure_scalar
-        # ddg_pred = (ddg_foldx + ddg_proteinmpnn + ddg_structure)/2
 
         out_dict = {
             'ddG_pred': ddg_pred,

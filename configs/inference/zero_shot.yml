@@ -2,19 +2,10 @@
 checkpoints:
   - ./trained_models/case_study.pt
 
-#pdb_wt_path: ./data/zero_shot/3VR6.pdb
-#pdb_wt_path: ./data/zero_shot/1N8Z.pdb
-#pdb_wt_path: ./data/zero_shot/1KNE.pdb
-pdb_wt_path: ./data/zero_shot/2BDN.pdb
+pdb_wt_path: ./data/zero_shot/1JTG.pdb
 cache_dir: ./data/zero_shot
-#partner1: ABCDEF
-#partner2: GH
-#partner1: HL
-#partner2: A
-#partner1: A
-#partner2: P
-partner1: HL
-partner2: A
+partner1: A
+partner2: B
 ddG: -0.723782226
 individual_list: ./data/zero_shot/individual_list.txt
 

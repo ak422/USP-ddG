@@ -291,12 +291,18 @@ def func1(pdbcode, path="optimized", subset='skempi_v2'):
 
 if __name__ == '__main__':
     # -6706-
+    # subset: python build_mutant_case.py --subset SKEMPI2
     MAX_CPU_cores = 32
-    parser = argparse.ArgumentParser()
-    subset = 'skempi_v2'
+    parser0 = argparse.ArgumentParser("First parser for initial arguments")
+    parser0.add_argument('--subset', type=str, default=f'SKEMPI2')
+    # 解析已知参数并获取剩下的参数
+    args0, remaining_args = parser0.parse_known_args()
+    subset = args0.subset
+
+    parser = argparse.ArgumentParser(description="Second parser for remaining arguments")
     prefix = Path(f'../../data/SKEMPI2/{subset}_cache')
     parser.add_argument('--csv-path', type=Path, default=Path(f'{prefix.parent}/{subset}.csv'), help='Path to the SKEMPI CSV file')
-    parser.add_argument('--csv-with-all-results', type=Path, default=Path(f'{prefix.parent}/{subset}_with_all_results.csv'),
+    parser.add_argument('--csv-with-all-results', type=Path, default=Path(f'{prefix.parent}/{subset}.csv'),
                        help='Path to the SKEMPI with all results file')
     parser.add_argument('--output-csv-path', type=Path, default=Path(f'{prefix}/{subset}.csv'), help='Path to the processed SKEMPI CSV file')
     parser.add_argument('--pdb-dir', type=Path, default=Path(f'{prefix}/PDBs'), help='Path to the SKEMPI PDB directory, must have name "PDBs"')
@@ -334,7 +340,7 @@ if __name__ == '__main__':
         processed_df = pd.DataFrame(dfs)
         processed_df.replace("1.00E+96", "1E96", inplace=True)
         processed_df.replace("1.00E+50", "1E50", inplace=True)
-        print(f"Preprocessing complete. {len(processed_df)} entries remain in the processed dataset.")
+        print(f"Preprocessing complete. {len(processed_df)} entries copied from the processed dataset.")
 
     assert args.pdb_dir.name == 'PDBs'
     if not args.pdb_dir.exists():

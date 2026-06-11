@@ -28,11 +28,13 @@ def _get_residue_heavyatom_info(res: Residue):
         if  atom_name.id not in ALL_ATOMS:
             # print("exist none-standard atoms.")
             continue
-        # try:
-        #     idx_heavyatom = restype_to_heavyatom_names[restype].index(atom_name.id)
-        # except:
-        #     continue
-        idx_heavyatom = restype_to_heavyatom_names[restype].index(atom_name.id)
+        try:
+            idx_heavyatom = restype_to_heavyatom_names[restype].index(atom_name.id)
+        except ValueError as e:
+            # 捕获 ValueError 并打印相关信息
+            raise ValueError(f"'{atom_name}' is not in restype_to_heavyatom_names for restype: {restype}")
+
+        # idx_heavyatom = restype_to_heavyatom_names[restype].index(atom_name.id)
 
         idx_allatom = ALL_ATOM_POSNS[atom_name.id]
         pos_heavyatom[idx_heavyatom] = torch.tensor(res[atom_name.id].get_coord().tolist(), dtype=pos_heavyatom.dtype)
@@ -149,6 +151,7 @@ def parse_biopython_structure(entity, interface_flag, esm2, chains_ordered, unkn
 
             # Heavy atoms
             pos_heavyatom, mask_heavyatom, pos_allatom, mask_allatom = _get_residue_heavyatom_info(res)
+
             data.pos_heavyatom.append(pos_heavyatom)
             data.mask_heavyatom.append(mask_heavyatom)
             data.pos_allatom.append(pos_allatom)

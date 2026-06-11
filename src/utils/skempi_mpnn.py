@@ -84,7 +84,7 @@ class ClassSequentialSampler(Sampler):
             self.label_to_indices[label].append(idx)
 
         cath_index_dict = {3: 0, 2: 1, 1: 2, 4: 3, 0: 4, 6: 5}
-        self.cath_index = [[1], [5], [2], [0]]
+        self.cath_index = [[1], [5], [2], [0], [3], [4]]
         # import time
         # random.seed(int(time.time()))
         # random.shuffle(self.cath_index)
@@ -121,6 +121,8 @@ class ClassSequentialSampler(Sampler):
 
             if self.shuffle_samples and not is_first_epoch:
                 np.random.shuffle(cls_indices)
+            # if self.shuffle_samples:
+            #     np.random.shuffle(cls_indices)
 
             # 记录第一个 epoch 的类别和样本信息
             if is_first_epoch:
@@ -197,7 +199,7 @@ class ClassSequentialSampler(Sampler):
 
 
 class SkempiDatasetManager(object):
-    def __init__(self, config, split_seed, num_cvfolds, num_workers=4, logger=BlackHole()):
+    def __init__(self, config, split_seed, num_cvfolds, device, num_workers=4, logger=BlackHole()):
         super().__init__()
         self.config = config
         self.num_cvfolds = num_cvfolds
@@ -205,6 +207,7 @@ class SkempiDatasetManager(object):
         self.val_loaders = []
         self.chains = []
         self.logger = logger
+        self.device = device
         self.num_workers = num_workers
         self.split_seed = split_seed
         for fold in range(num_cvfolds):
@@ -221,6 +224,7 @@ class SkempiDatasetManager(object):
             pdb_mt_dir=config.data.pdb_mt_dir,
             prior_dir=config.data.prior_dir,
             cache_dir = config.data.cache_dir,
+            device = self.device,
             num_cvfolds = self.num_cvfolds,
             cvfold_index = fold,
             split_seed = self.split_seed,
@@ -238,15 +242,15 @@ class SkempiDatasetManager(object):
         assert len(leakage) == 0, f'data leakage {leakage}'
         # cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
 
-        import csv
-        tm_score_dict = {}
-        df = pd.read_csv('./data/SKEMPI2/TM-score.csv', sep=',')
-        df.replace("1.00E+96", "1E96", inplace=True)
-        df.replace("1.00E+50", "1E50", inplace=True)
-        for i, row in df.iterrows():
-            pdb = row['pdb']
-            tm_score = float(row['TM-score'])
-            tm_score_dict[pdb] = tm_score
+        # import csv
+        # tm_score_dict = {}
+        # df = pd.read_csv('./data/SKEMPI2/TM-score.csv', sep=',')
+        # df.replace("1.00E+96", "1E96", inplace=True)
+        # df.replace("1.00E+50", "1E50", inplace=True)
+        # for i, row in df.iterrows():
+        #     pdb = row['pdb']
+        #     tm_score = float(row['TM-score'])
+        #     tm_score_dict[pdb] = tm_score
 
         # 对 entries 排序
         train_dataset.entries.sort(

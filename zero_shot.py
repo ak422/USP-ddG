@@ -52,6 +52,16 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
+def set_seed(seed):
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.enabled = True
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
 def pdb2dict(pdb_path):
     # ca_pattern = re.compile(
     #     "^ATOM\s{2,6}\d{1,5}\s{2}CA\s[\sA]([A-Z]{3})\s([\s\w])|^HETATM\s{0,4}\d{1,5}\s{2}CA\s[\sA](MSE)\s([\s\w])")
@@ -97,7 +107,8 @@ def PDB_chainset(pdb_path, partner1, partner2):
 
 def load_category_entries(pdb_wt_path, partner1, partner2, individual_list):
 
-    complex_name = pdb_wt_path.stem
+    # complex_name = pdb_wt_path.stem
+    complex_name = pdb_wt_path.parent.name
     prior_dir = pdb_wt_path.parent
 
     def _parse_mut(mut_name):
@@ -204,10 +215,14 @@ class CaseDataset(Dataset):
         self.partner1 = config.partner1
         self.partner2 = config.partner2
 
-        self.ddg_predictor = DDGPredictor(config)
-        self.ddg_predictor.load_state_dict(torch.load(config.sft_ckpt_path, map_location='cpu', weights_only=False)['models'][0], strict=False)
-        # self.ddg_predictor.mpnn.load_state_dict(torch.load(config.ckpt_path, map_location='cpu', weights_only=False)['model_state_dict'], strict=False)
         self.device = device
+        set_seed(config.seed)
+        self.ddg_predictor = DDGPredictor(config)
+        # self.ddg_predictor.load_state_dict(torch.load(config.sft_ckpt_path, map_location=device, weights_only=False)['models'][0], strict=False)
+        self.ddg_predictor.mpnn.load_state_dict(
+            torch.load(config.ckpt_path, map_location=device, weights_only=False)['model_state_dict'],
+            strict=False
+        )
 
         self.data = []
         self.db_conn = None
@@ -219,29 +234,20 @@ class CaseDataset(Dataset):
         self.entries = None
         self.structures = None
 
-        start_data = time.perf_counter()
-        for i in range(10):
-            self.ddG_FoldX, stderr = self.build_mutant(self.pdb_wt_path, self.cache_dir, self.individual_list, self.partner1, self.partner2)
-        end_data = time.perf_counter()
-        data_time = end_data - start_data
-        print('FoldX preprocessing time = ', data_time/10)
+        self.ddG_FoldX, stderr = self.build_mutant(self.pdb_wt_path, self.cache_dir, self.individual_list, self.partner1, self.partner2)
 
-        start_data = time.perf_counter()
-        for i in range(10):
-            self._load_entries(reset=True)
-            self._load_structures(reset=True)
-            self.transform = Compose([
-                SelectAtom(config.data.transform[0].resolution),
-                AddAtomNoise(config.data.transform[1].noise_backbone,
-                             config.data.transform[1].noise_sidechain),
-                SelectedRegionFixedSizePatch(config.data.transform[2].select_attr, patch_size=256)
-            ])
-        end_data = time.perf_counter()
-        data_time = end_data - start_data
-        print('feature extraction time = ', data_time/10)
+        self._load_entries(reset=True)
+        self._load_structures(reset=True)
+        self.transform = Compose([
+            SelectAtom(config.data.transform[0].resolution),
+            AddAtomNoise(config.data.transform[1].noise_backbone,
+                         config.data.transform[1].noise_sidechain),
+            SelectedRegionFixedSizePatch(config.data.transform[2].select_attr, patch_size=256)
+        ])
+
 
     def build_mutant(self, pdb_path_wt, output_dir, individual_list, partner1, partner2, RepairPDB=False):
-        complex = pdb_path_wt.stem
+        complex = pdb_path_wt.stem.split('_')[0]
 
         files = glob.glob(f'{pdb_path_wt.parent}/{complex}_Repair.pdb')
         if files == []:
@@ -249,45 +255,25 @@ class CaseDataset(Dataset):
             command = f"./FoldX --command RepairPDB --ionStrength 0.15 --pdb-dir {pdb_path_wt.parent} --output-dir {output_dir} --pdb {pdb_path_wt.name}"
             result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     timeout=9600)
-            # if result.returncode == 0:
-            #     print('RepairPDB success.')
-            # else:
-            #     print('RepairPDB failed.')
 
         # buildmodel
         command = f'./FoldX --command=BuildModel --numberOfRuns=1 --pdb={f"{complex}_Repair.pdb"}  --mutant-file={individual_list}  --output-dir={output_dir} --pdb-dir={output_dir} >{output_dir}/foldx.log'
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # if result.returncode == 0:
-        #     print('BuildModel success.')
-        # else:
-        #     print('BuildModel failed.')
 
         # optimize for mutant
         command = f"./FoldX --command=Optimize --pdb={f'{complex}_Repair_1.pdb'}  --output-dir={output_dir} --pdb-dir={output_dir} >{output_dir}/foldx.log"
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # if result.returncode == 0:
-        #     print('Optimize mutant success.')
-        # else:
-        #     print('Optimize mutant failed.')
 
         # AnalyseComplex for wild-type
         command = f"./FoldX --command=AnalyseComplex --pdb={f'WT_{complex}_Repair_1.pdb'} --analyseComplexChains={f'{partner1},{partner2}'} --output-dir={output_dir} --pdb-dir={output_dir} >{output_dir}/foldx.log"
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # if result.returncode == 0:
-        #     print('AnalyseComplex wild-type success.')
-        # else:
-        #     print('AnalyseComplex wild-type failed.')
 
         # AnalyseComplex for mutant
-        command = f"./FoldX --command=AnalyseComplex --pdb={f'{complex}_Repair_1.pdb'} --analyseComplexChains={f'{partner1},{partner2}'} --output-dir={output_dir} --pdb-dir={output_dir} >{output_dir}/foldx.log"
+        command = f"./FoldX --command=AnalyseComplex --pdb={f'Optimized_{complex}_Repair_1.pdb'} --analyseComplexChains={f'{partner1},{partner2}'} --output-dir={output_dir} --pdb-dir={output_dir} >{output_dir}/foldx.log"
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # if result.returncode == 0:
-        #     print('AnalyseComplex mutant success.')
-        # else:
-        #     print('AnalyseComplex mutant failed.')
 
         # Interaction energy term
-        Interaction_mt = f"{output_dir}/Interaction_{complex}_Repair_1_AC.fxout"
+        Interaction_mt = f"{output_dir}/Interaction_Optimized_{complex}_Repair_1_AC.fxout"
         Interaction_wt = f"{output_dir}/Interaction_WT_{complex}_Repair_1_AC.fxout"
         with open(Interaction_mt, "r") as file:
             lines = file.readlines()
@@ -303,7 +289,7 @@ class CaseDataset(Dataset):
         ddG_FoldX = Inter_mt - Inter_wt
         # print('ddG_FoldX = ', ddG_FoldX)
 
-        command1 = f'mv {output_dir}/Interaction_{complex}_Repair_1_AC.fxout {output_dir}/Interaction_mutant.txt'
+        command1 = f'mv {output_dir}/Interaction_Optimized_{complex}_Repair_1_AC.fxout {output_dir}/Interaction_mutant.txt'
         command2 = f'mv {output_dir}/Interaction_WT_{complex}_Repair_1_AC.fxout {output_dir}/Interaction_wild_type.txt'
         command3 = f'mv {output_dir}/Optimized_{complex}_Repair_1.pdb {output_dir}/mutant.pdb'
         command4 = f'mv {output_dir}/WT_{complex}_Repair_1.pdb {output_dir}/wild_type.pdb'
@@ -360,7 +346,7 @@ class CaseDataset(Dataset):
     def generate_esm2(self, pdbcode_list):
 
         tokenizer = AutoTokenizer.from_pretrained("./data/esm2_t33_650M_UR50D")
-        esm_model = EsmModel.from_pretrained("./data/esm2_t33_650M_UR50D", device_map="auto", max_memory={1: "8GiB"})
+        esm_model = EsmModel.from_pretrained("./data/esm2_t33_650M_UR50D", device_map="auto", max_memory={0: "4GiB"})
         esm_model.eval()
 
         # 获取模型所在设备
@@ -418,60 +404,6 @@ class CaseDataset(Dataset):
 
         return esm_results
 
-
-    # def _process_structure(self, pdb_wt_path, pdb_mt_path, esm_results, ligand, receptor, pdbcode) -> Optional[Dict]:
-    #     structures = defaultdict(dict)
-    #     parser = PDBParser(QUIET=True)
-    #     model = parser.get_structure(None, pdb_wt_path)[0]
-    #     chains = Selection.unfold_entities(model, 'C')
-    #
-    #     # delete invalid chain
-    #     for i, chain in enumerate(chains):
-    #         if chain.id == " ":
-    #             del chains[i]
-    #
-    #     interface_wt = []
-    #     cmd.load(pdb_wt_path)  # 载入目录中的蛋白或配体
-    #     for chain_A in ligand:
-    #         for chain_B in receptor:
-    #             if chain_A == chain_B:
-    #                 continue
-    #             rVal, ans = interfaceResidues('wild_type', 'c. ' + chain_A, 'c. ' + chain_B)
-    #             mapp = {'chA': chain_A, 'chB': chain_B}
-    #             for line in ans:
-    #                 linee = line.strip().split('_')
-    #                 resid = linee[0]  # 残基序号
-    #                 chainn = mapp[linee[1]]  # 链标识符cha, 或者 链标识符chb
-    #                 inter = '{}_{}'.format(chainn, resid)  # 如 inter: E_I_E_20  后面2个表示结合位点的残基和残基序号
-    #                 if inter not in interface_wt:
-    #                     interface_wt.append(inter)
-    #     cmd.delete('all')
-    #
-    #     interface_mt = []
-    #     cmd.load(pdb_mt_path)  # 载入目录中的蛋白或配体
-    #     for chain_A in ligand:
-    #         for chain_B in receptor:
-    #             if chain_A == chain_B:
-    #                 continue
-    #             rVal, ans = interfaceResidues('mutant', 'c. ' + chain_A, 'c. ' + chain_B)
-    #             mapp = {'chA': chain_A, 'chB': chain_B}
-    #             for line in ans:
-    #                 linee = line.strip().split('_')
-    #                 resid = linee[0]  # 残基序号
-    #                 chainn = mapp[linee[1]]  # 链标识符cha, 或者 链标识符chb
-    #                 inter = '{}_{}'.format(chainn, resid)  # 如 inter: E_I_E_20  后面2个表示结合位点的残基和残基序号
-    #                 if inter not in interface_mt:
-    #                     interface_mt.append(inter)
-    #     cmd.delete('all')
-    #
-    #     # # esm2 embeddings
-    #     esm2_wt = esm_results['wt'][pdbcode]
-    #     esm2_mt = esm_results['mt'][pdbcode]
-    #
-    #     structures.update(_get_structure(pdb_wt_path, interface_wt, chains, pdbcode, esm2_wt, "wt"))
-    #     structures.update(_get_structure(pdb_mt_path, interface_mt, chains, pdbcode, esm2_mt, "mt"))
-    #     return structures
-
     def _process_structure(self, pdb_wt_path, pdb_mt_path, esm_results, ligand, receptor, pdbcode):
 
         structures = defaultdict(dict)
@@ -481,30 +413,6 @@ class CaseDataset(Dataset):
         model = parser.get_structure(None, pdb_wt_path)[0]
 
         chains = [c for c in model.get_chains() if c.id.strip()]
-
-        # ---------- interface function ----------
-        # def get_interface(pdb_path, obj_name):
-        #
-        #     interface = set()
-        #
-        #     cmd.load(pdb_path, obj_name)
-        #
-        #     for chain_A in ligand:
-        #         for chain_B in receptor:
-        #
-        #             if chain_A == chain_B:
-        #                 continue
-        #
-        #             _, ans = interfaceResidues(obj_name, f'c. {chain_A}', f'c. {chain_B}')
-        #
-        #             for line in ans:
-        #                 resid, tag = line.strip().split('_')
-        #                 chain_id = chain_A if tag == "chA" else chain_B
-        #                 interface.add(f"{chain_id}_{resid}")
-        #
-        #     cmd.delete(obj_name)
-        #
-        #     return list(interface)
 
         from scipy.spatial import cKDTree
         def get_interface_fast(pdb_path, ligand, receptor, cutoff=5.0):
@@ -557,14 +465,8 @@ class CaseDataset(Dataset):
 
             return list(interface)
 
-        # start_data = time.perf_counter()
-
         interface_wt = get_interface_fast(pdb_wt_path, ligand, receptor)
         interface_mt = get_interface_fast(pdb_mt_path, ligand, receptor)
-
-        # end_data = time.perf_counter()
-        # data_pymol_time = end_data - start_data
-        # print('data_pymol_time = ', data_pymol_time)
 
         # ---------- esm2 embeddings ----------
         esm2_wt = esm_results['wt'][pdbcode]
@@ -752,7 +654,7 @@ class CaseDataset(Dataset):
             'residue_idx': -100,
             'mask': 0,
         }
-        MPNNpadding_collate = MPNNPaddingCollate(256)
+        MPNNpadding_collate = MPNNPaddingCollate(patch_size=256, pad_values=MPNN_PAD_VALUES)
         batch = MPNNpadding_collate([data_dict_wt])
 
         wt_scores_cycle, mut_scores_cycle  = self.thermo_cycle(batch)
@@ -796,279 +698,100 @@ if __name__ == '__main__':
     cv_mgr = CrossValidation(model_factory=MoE_ddG_NET,
                              config=config_model,
                              num_cvfolds=config_model.train.num_cvfolds).to(args.device)
-    # # Data
-    # dataset = CaseDataset(
-    #     config=config,
-    #     device=args.device,
-    # )
-    #
-    # loader = DataLoader(
-    #     dataset,
-    #     batch_size=config.data.batch_size,
-    #     shuffle=False,
-    #     collate_fn=PaddingCollate(config.data.batch_size),
-    #     num_workers=args.num_workers,
-    # )
-    #
-    # results = []
-    # for fold in range(config_model.train.num_cvfolds):
-    #     for i in range(len(ckpt)):
-    #         cv_mgr.load_state_dict(ckpt[i]['model'], )
-    #         model, _, _, _ = cv_mgr.get(fold)
-    #         model.eval()
-    #         with torch.no_grad():
-    #             for batch in loader:
-    #                 # Prepare data
-    #                 batch = recursive_to(batch, args.device)
-    #                 output_dict = model.inference(batch)
-    #
-    #                 for pdbcode, mutstr, ddg_pred in zip(batch["wt"]['#Pdb'], batch["wt"]['mutstr'], output_dict['ddG_pred']):
-    #                     results.append({
-    #                         'pdbcode': pdbcode,
-    #                         'mutstr': mutstr,
-    #                         'num_muts': len(mutstr.split(',')),
-    #                         'ddG_pred': ddg_pred.item(),
-    #                     })
-    #
-    # results = pd.DataFrame(results)
-    # print('ddG = ', config.ddG)
-    # print('ddG_pred = ', results['ddG_pred'].mean(axis=0))
-
-    # # ===============================
-    # # Efficiency Benchmark Settings
-    # # ===============================
-    # warmup_iters = 5
-    # measure_iters = 20
-    #
-    # infer_times = []
-    # total_times = []
-    #
-    # # =========================
-    # # Data loading (only once)
-    # # =========================
-    # start_data = time.perf_counter()
-    #
-    # dataset = CaseDataset(
-    #     config=config,
-    #     device=args.device,
-    # )
-    #
-    # loader = DataLoader(
-    #     dataset,
-    #     batch_size=config.data.batch_size,
-    #     shuffle=False,
-    #     collate_fn=PaddingCollate(config.data.batch_size),
-    #     num_workers=args.num_workers,
-    # )
-    #
-    # if "cuda" in args.device:
-    #     torch.cuda.synchronize()
-    #
-    # end_data = time.perf_counter()
-    # data_loading_time = end_data - start_data
-    #
-    # # =========================
-    # # Load models only once
-    # # =========================
-    # models = []
-    # for fold in range(config_model.train.num_cvfolds):
-    #     for i in range(len(ckpt)):
-    #         cv_mgr.load_state_dict(ckpt[i]['model'], )
-    #         model, _, _, _ = cv_mgr.get(fold)
-    #         model = model.to(args.device)
-    #         model.eval()
-    #         models.append(model)
-    #
-    # # ===============================
-    # # Inference Benchmark
-    # # ===============================
-    # for run in range(warmup_iters + measure_iters):
-    #
-    #     if "cuda" in args.device:
-    #         torch.cuda.synchronize()
-    #
-    #     start_total = time.perf_counter()
-    #     start_infer = time.perf_counter()
-    #
-    #     with torch.no_grad():
-    #
-    #         for batch in loader:
-    #
-    #             batch = recursive_to(batch, args.device)
-    #
-    #             for model in models:
-    #                 output_dict = model.inference(batch)
-    #
-    #     if "cuda" in args.device:
-    #         torch.cuda.synchronize()
-    #
-    #     end_infer = time.perf_counter()
-    #     end_total = time.perf_counter()
-    #
-    #     if run >= warmup_iters:
-    #         infer_times.append(end_infer - start_infer)
-    #         total_times.append(end_total - start_total)
-    #
-    # # ===============================
-    # # Statistics
-    # # ===============================
-    # num_samples = len(dataset)
-    #
-    # print("\n========== Efficiency Benchmark ==========")
-    #
-    # print(f"Samples: {num_samples}")
-    # print(f"Batch size: {config.data.batch_size}")
-    # print(f"Num folds: {config_model.train.num_cvfolds}")
-    #
-    # print("\n--- Data Loading ---")
-    # print(f"Time: {data_loading_time:.4f} s")
-    #
-    # print("\n--- Model Inference ---")
-    # print(f"Avg time: {np.mean(infer_times):.4f} s")
-    # print(f"Std: {np.std(infer_times):.4f} s")
-    #
-    # print("\n--- Total Pipeline ---")
-    # print(f"Avg time: {np.mean(total_times):.4f} s")
-    # print(f"Std: {np.std(total_times):.4f} s")
-    #
-    # # throughput
-    # samples_per_run = num_samples
-    #
-    # print("\n--- Throughput ---")
-    # print(f"Inference time per sample: {np.mean(infer_times) / samples_per_run:.6f} s")
 
     # ===============================
-    # Efficiency Benchmark Settings
+    # Saturated mutation generation
     # ===============================
+    # 定义饱和突变位点: [(野生型氨基酸, 链, 残基序号), ...]
+    SATURATED_POSITIONS = [
+        ('R', 'A', 231), ('I', 'A', 232), ('V', 'A', 233),
+        ('V', 'A', 234), ('I', 'A', 235), ('Y', 'A', 236), ('T', 'A', 237),
+    ]
+    AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 
-    warmup_iters = 5
-    measure_iters = 20
+    base_cache_dir = Path(config.cache_dir)
+    base_cache_dir.mkdir(parents=True, exist_ok=True)
+    pdb_wt = Path(config.pdb_wt_path)
+    complex_name = pdb_wt.stem
 
-    infer_times = []
-    total_times = []
+    # 预生成所有突变及对应的 individual_list.txt
+    mutation_tasks = []
+    for wt, chain, resseq in SATURATED_POSITIONS:
+        for mt in AMINO_ACIDS:
+            if mt == wt:
+                continue
+            mut_name = f"{wt}{chain}{resseq}{mt}"
+            mut_dir = base_cache_dir / "saturated" / mut_name
+            mut_dir.mkdir(parents=True, exist_ok=True)
+            ind_list_file = mut_dir / "individual_list.txt"
+            with open(ind_list_file, 'w') as f:
+                f.write(f"{mut_name};")
+            mutation_tasks.append((mut_name, str(mut_dir), str(ind_list_file)))
 
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cuda.matmul.allow_tf32 = True
+    # 预先确保 Repair.pdb 存在（在基础 cache_dir 中执行一次）
+    repair_pdb_src = base_cache_dir / f"{complex_name}_Repair.pdb"
+    if not repair_pdb_src.exists():
+        cmd_repair = (
+            f"./FoldX --command RepairPDB --ionStrength 0.15 "
+            f"--pdb-dir {pdb_wt.parent} --output-dir {base_cache_dir} "
+            f"--pdb {pdb_wt.name}"
+        )
+        subprocess.run(cmd_repair, shell=True, check=True)
 
-    # =========================
-    # Data loading (only once)
-    # =========================
-    start_data = time.perf_counter()
+    # 循环每个突变：复制 Repair.pdb -> 创建 Dataset -> 推理
+    all_results = []
+    for mut_name, mut_dir, ind_list in tqdm(mutation_tasks, desc="Processing mutations"):
+        # 复制 Repair.pdb 到子目录，避免重复 RepairPDB
+        repair_pdb_dst = Path(mut_dir) / f"{complex_name}_Repair.pdb"
+        if not repair_pdb_dst.exists():
+            import shutil
+            shutil.copy(repair_pdb_src, repair_pdb_dst)
 
-    dataset = CaseDataset(
-        config=config,
-        device=args.device,
-    )
+        # 临时修改 config
+        config.cache_dir = mut_dir
+        config.individual_list = ind_list
+        config.pdb_wt_path = repair_pdb_dst
 
-    loader = DataLoader(
-        dataset,
-        batch_size=config.data.batch_size,
-        shuffle=False,
-        collate_fn=PaddingCollate(config.data.batch_size),
-        num_workers=args.num_workers,
-    )
+        # Data
+        dataset = CaseDataset(
+            config=config,
+            device=args.device,
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=config.data.batch_size,
+            shuffle=False,
+            collate_fn=PaddingCollate(config.data.batch_size),
+            num_workers=args.num_workers,
+        )
 
-    if "cuda" in args.device:
-        torch.cuda.synchronize()
+        for fold in range(config_model.train.num_cvfolds):
+            for i in range(len(ckpt)):
+                cv_mgr.load_state_dict(ckpt[i]['model'], )
+                model, _, _, _ = cv_mgr.get(fold)
+                model.eval()
+                with torch.no_grad():
+                    for batch in loader:
+                        batch = recursive_to(batch, args.device)
+                        output_dict = model.inference(batch)
+                        for pdbcode, mutstr, ddg_pred in zip(
+                            batch["wt"]['#Pdb'],
+                            batch["wt"]['mutstr'],
+                            output_dict['ddG_pred']
+                        ):
+                            all_results.append({
+                                'pdbcode': pdbcode,
+                                'mutstr': mutstr,
+                                'num_muts': len(mutstr.split(',')),
+                                'ddG_pred': ddg_pred.item(),
+                            })
 
-    end_data = time.perf_counter()
-    data_loading_time = (end_data - start_data)/10
-
-
-    # ===============================
-    # Preload batches to GPU
-    # ===============================
-
-    print("Preloading batches...")
-
-    batches = []
-
-    for batch in loader:
-        batch = recursive_to(batch, args.device)
-
-        batches.append(batch)
-
-    num_batches = len(batches)
-
-    print("Total batches:", num_batches)
-
-    # ===============================
-    # Load all models once
-    # ===============================
-
-    models = []
-
-    for fold in range(config_model.train.num_cvfolds):
-
-        for i in range(len(ckpt)):
-            cv_mgr.load_state_dict(ckpt[i]['model'])
-
-            model, _, _, _ = cv_mgr.get(fold)
-
-            model.eval()
-
-            models.append(model)
-
-    num_models = len(models)
-
-    print("Total models:", num_models)
-
-    # ===============================
-    # Inference Benchmark
-    # ===============================
-    ddG = 0.0
-    for run in range(warmup_iters + measure_iters):
-        if "cuda" in args.device:
-            torch.cuda.synchronize()
-
-        start_total = time.perf_counter()
-        start_infer = start_total
-
-        result = 0.0
-        with torch.no_grad():
-            for model in models:
-                for batch in batches:
-                    # _ = model.inference(batch)
-                    output_dict = model.inference(batch)
-                    result += output_dict['ddG_pred'].item()
-        ddG = result/3
-
-        if "cuda" in args.device:
-            torch.cuda.synchronize()
-
-        end_total = time.perf_counter()
-        end_infer = end_total
-
-        if run >= warmup_iters:
-            infer_times.append(end_infer - start_infer)
-
-            total_times.append(end_total - start_total)
-
-    # ===============================
-    # Statistics
-    # ===============================
-
-    num_samples = len(dataset)
-
-    samples_per_run = num_samples * num_models
-
-    print("\n========== Efficiency Benchmark ==========")
-
-    print(f"Samples: {num_samples}")
-    print(f"Models: {num_models}")
-    print('ddG_pred = ',ddG)
-
-    print("\n--- Data Loading ---")
-    print(f"Time: {data_loading_time:.4f} s")
-
-    print("\n--- Model Inference ---")
-    print(f"Avg time: {np.mean(infer_times):.4f} s")
-    print(f"Std: {np.std(infer_times):.4f} s")
-
-    print("\n--- Total Pipeline ---")
-    print(f"Avg time: {np.mean(total_times):.4f} s")
-    print(f"Std: {np.std(total_times):.4f} s")
-
-    print("\n--- Throughput ---")
-
-    print(f"Inference time per sample: {np.mean(infer_times) / samples_per_run:.6f} s")
+    results_df = pd.DataFrame(all_results)
+    # 对多个 fold/checkpoint 取平均，每个突变保留一行
+    results_df = results_df.groupby(['pdbcode', 'mutstr'], as_index=False).agg({
+        'num_muts': 'first',
+        'ddG_pred': 'mean'
+    })
+    results_df.to_csv(args.output_results, index=False)
+    print(f"Saved {len(results_df)} saturated mutation results to {args.output_results}")
+    print('Average ddG_pred = ', results_df['ddG_pred'].mean())
