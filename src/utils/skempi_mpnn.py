@@ -1,19 +1,18 @@
 import functools
-import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
-import math
 from sklearn.metrics import roc_auc_score, precision_score, recall_score
 from sklearn.exceptions import UndefinedMetricWarning
 import warnings
 from sklearn.linear_model import LinearRegression
 from tqdm.auto import tqdm
-import torch
 import os
-import pickle
-import random
 import logging
+from pathlib import Path
+import subprocess
+import re
+import multiprocessing as mp
 
 from src.utils.misc import inf_iterator, BlackHole
 from src.utils.data_skempi_mpnn import PaddingCollate
@@ -22,55 +21,6 @@ from src.datasets import SkempiDataset_lmdb
 
 from torch.utils.data.sampler import Sampler
 from collections import defaultdict
-from collections import Counter
-
-# class ClassSequentialSampler(Sampler):
-#     def __init__(self, labels, shuffle_classes=False, shuffle_samples=True, logger=None):
-#         """
-#         Args:
-#             labels (list): 数据集的结构域标签列表，如 [0, 1, 2, 0, 1, 2, ...]
-#             shuffle_classes (bool): 是否打乱类别顺序（默认 True）
-#             shuffle_samples (bool): 是否打乱当前类别内的样本顺序（默认 True）
-#         """
-#         self.labels = labels
-#         self.shuffle_classes = shuffle_classes
-#         self.shuffle_samples = shuffle_samples
-#
-#         # 构建类别到样本索引的映射
-#         self.label_to_indices = defaultdict(list)
-#         for idx, label in enumerate(labels):
-#             self.label_to_indices[label].append(idx)
-#         # {cath-class: lable-index}
-#         cath_index_dict = {3: 0, 2: 1, 1: 2, 4: 3, 0: 4, 6: 5}
-#         # self.cath_index = [[0], [2], [1], [3], [4], [5]]
-#         self.cath_index = [[5], [1], [4], [0], [2], [3]]
-#         import time
-#         # random.seed(int(time.time()))
-#         # random.shuffle(self.cath_index)
-#         logger.info(self.cath_index)
-#
-#         self.num_classes = len(self.cath_index)
-#         self.num_samples = len(labels)
-#
-#     def __iter__(self):
-#         # 1. 打乱类别顺序（如果启用）
-#         if self.shuffle_classes:
-#             np.random.shuffle(self.cath_index)
-#
-#         # 2. 遍历每个类别，并采样当前类别的样本
-#         indices = []
-#         for cls in self.cath_index:
-#             cls_indices = []
-#             for cl in cls:
-#                 cls_indices.extend(self.label_to_indices[cl])
-#             if self.shuffle_samples:
-#                 np.random.shuffle(cls_indices)
-#             indices.extend(cls_indices)
-#
-#         return iter(indices)
-#
-#     def __len__(self):
-#         return self.num_samples
 
 class ClassSequentialSampler(Sampler):
     def __init__(self, labels, shuffle_classes=False, shuffle_samples=True, logger=None):
@@ -98,14 +48,17 @@ class ClassSequentialSampler(Sampler):
         self.logger = logger
 
         # ===== 新增：epoch 计数器 =====
-        self.epoch_count = 0
+        self.epoch = 1
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
 
     def __iter__(self):
-        # epoch 计数递增
-        self.epoch_count += 1
-        is_first_epoch = (self.epoch_count == 1)
+        is_first_epoch = (self.epoch == 1)
 
-        if self.shuffle_classes:
+        # if self.shuffle_classes:
+        #     np.random.shuffle(self.cath_index)
+        if self.shuffle_classes and not is_first_epoch:  # not shuffle in epoch 1
             np.random.shuffle(self.cath_index)
 
         # 遍历每个类别，并采样当前类别的样本
@@ -119,83 +72,58 @@ class ClassSequentialSampler(Sampler):
                 cls_indices.extend(self.label_to_indices[cl])
                 class_labels.append(cl)
 
-            if self.shuffle_samples and not is_first_epoch:
+            if self.shuffle_samples and not is_first_epoch:  # not shuffle in epoch 1
                 np.random.shuffle(cls_indices)
             # if self.shuffle_samples:
             #     np.random.shuffle(cls_indices)
 
-            # 记录第一个 epoch 的类别和样本信息
-            if is_first_epoch:
-                epoch_order_log.append({
-                    'class': cls,
-                    'class_labels': class_labels,
-                    'num_samples': len(cls_indices),
-                    'sample_indices': cls_indices.copy()
-                })
-
             indices.extend(cls_indices)
-
-        # ===== 新增：第一个 epoch 将完整顺序写入文件 =====
-        if is_first_epoch:
-            # 构建输出内容
-            lines = []
-            lines.append("=" * 70)
-            lines.append(f"[ClassSequentialSampler] 第 1 个 Epoch 的采样顺序")
-            lines.append(f"生成时间: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            lines.append(f"类别遍历顺序 (cath_index): {self.cath_index}")
-            lines.append(f"总样本数: {len(indices)}")
-            lines.append("-" * 70)
-
-            all_sample_indices = []
-            for i, info in enumerate(epoch_order_log):
-                lines.append(f"Step {i + 1}: CATH 类别 {info['class']} (标签 {info['class_labels']}), "
-                             f"样本数 {info['num_samples']}")
-                lines.append(f"  样本索引: {info['sample_indices']}")
-                all_sample_indices.extend(info['sample_indices'])
-
-            lines.append("-" * 70)
-            lines.append(f"完整采样索引序列 (共 {len(all_sample_indices)} 个):")
-            # 每行输出 20 个索引，便于阅读
-            for i in range(0, len(all_sample_indices), 20):
-                chunk = all_sample_indices[i:i + 20]
-                lines.append(f"  [{i:5d}:{min(i + 20, len(all_sample_indices)):5d}] {chunk}")
-
-            lines.append("=" * 70)
-
-            output_text = "\n".join(lines)
-
-            # ===== 核心修改：提取 logger 日志目录 =====
-            log_dir = None
-            if self.logger is not None:
-                for handler in self.logger.handlers:
-                    if isinstance(handler, logging.FileHandler):
-                        log_dir = os.path.dirname(handler.baseFilename)
-                        break
-
-            # 回退保护：若 logger 无 FileHandler，使用当前工作目录
-            save_dir = log_dir if log_dir is not None else os.getcwd()
-
-            # 文件名固定即可（因目录已按运行隔离），或加时间戳更保险
-            output_filename = "epoch1_sample_order.txt"
-            output_path = os.path.join(save_dir, output_filename)
-
-
-            try:
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(output_text)
-                print(f"\n[已保存] 第一个 epoch 的样本顺序已写入: {output_path}")
-            except Exception as e:
-                print(f"\n[保存失败] 无法写入文件 {output_path}: {e}")
-
-            # 同时写入 logger
-            if self.logger is not None:
-                self.logger.info(f"[Epoch 1] Sample order saved to {output_path}, "
-                                 f"total {len(all_sample_indices)} samples")
 
         return iter(indices)
 
     def __len__(self):
         return self.num_samples
+
+
+def _get_pdb_path(complex_name, pdb_dir):
+    pdb_path = os.path.join(pdb_dir, f"{complex_name}.pdb")
+    if os.path.exists(pdb_path):
+        return pdb_path
+    pdb_path = os.path.join(pdb_dir, f"{complex_name.upper()}.pdb")
+    if os.path.exists(pdb_path):
+        return pdb_path
+    return None
+
+
+def _run_tmalign(pdb1, pdb2):
+    try:
+        result = subprocess.run(
+            ['TMalign', pdb1, pdb2],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        output = result.stdout
+        # Parse the first TM-score (normalized by length of Chain_1, i.e., query)
+        match = re.search(r'TM-score=\s+([0-9.]+)', output)
+        if match:
+            return float(match.group(1))
+        return 0.0
+    except Exception:
+        return 0.0
+
+
+def _compute_max_tmscore(args):
+    tc, val_pdb_paths, PDB_dir = args
+    tp = _get_pdb_path(tc, PDB_dir)
+    if tp is None:
+        return (tc, 0.0, False)
+    max_tm = 0.0
+    for vp in val_pdb_paths:
+        tm = _run_tmalign(tp, vp)
+        if tm > max_tm:
+            max_tm = tm
+    return (tc, max_tm, True)
 
 
 class SkempiDatasetManager(object):
@@ -242,15 +170,36 @@ class SkempiDatasetManager(object):
         assert len(leakage) == 0, f'data leakage {leakage}'
         # cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
 
-        # import csv
-        # tm_score_dict = {}
-        # df = pd.read_csv('./data/SKEMPI2/TM-score.csv', sep=',')
-        # df.replace("1.00E+96", "1E96", inplace=True)
-        # df.replace("1.00E+50", "1E50", inplace=True)
-        # for i, row in df.iterrows():
-        #     pdb = row['pdb']
-        #     tm_score = float(row['TM-score'])
-        #     tm_score_dict[pdb] = tm_score
+        train_complex = set([e['complex'] for e in train_dataset.entries])
+        val_complex = set([e['complex'] for e in val_dataset.entries])
+        PDB_dir = Path(self.config.data.pdb_wt_dir).parent.joinpath('PDBs')
+
+        # Build val PDB path list
+        val_pdb_paths = []
+        for vc in val_complex:
+            vp = _get_pdb_path(vc, PDB_dir)
+            if vp is not None:
+                val_pdb_paths.append(vp)
+            else:
+                self.logger.warning(f'Val PDB not found for complex: {vc}')
+
+        # Prepare arguments for multiprocessing
+        train_list = list(train_complex)
+        args_list = [(tc, val_pdb_paths, PDB_dir) for tc in train_list]
+        num_workers = min(mp.cpu_count(), len(args_list)) if len(args_list) > 0 else 1
+
+        with mp.Pool(processes=num_workers) as pool:
+            results = list(tqdm(
+                pool.imap_unordered(_compute_max_tmscore, args_list),
+                total=len(args_list),
+                desc=f'Computing TM-scores for Fold-{fold+1}'
+            ))
+
+        tm_score_dict = {}
+        for tc, max_tm, found in results:
+            if not found:
+                self.logger.warning(f'Train PDB not found for complex: {tc}')
+            tm_score_dict[tc] = max_tm
 
         # 对 entries 排序
         train_dataset.entries.sort(
@@ -260,10 +209,9 @@ class SkempiDatasetManager(object):
         sorted_data =  train_dataset.entries
         cath_label_train = [e['cath_label_index'] for e in sorted_data]
 
-
         sampler = ClassSequentialSampler(
             labels=cath_label_train,
-            shuffle_classes=False,  # 每个 epoch 随机打乱类别顺序
+            shuffle_classes=True,  # 每个 epoch 随机打乱类别顺序
             shuffle_samples=True,  # 每个类别内的样本顺序随机
             logger=self.logger,
         )

@@ -62,75 +62,141 @@ def get_std_opt(params, d_model, warmup, step, factor, weight_decay):
         d_model, factor, warmup, torch.optim.Adam(params, lr=0, weight_decay= weight_decay, betas=(0.9, 0.98), eps=1e-9), step
     )
 
+# def get_optimizer(cfg, model):
+#     # 1. 定义模块→超参映射（严格对应你的需求）
+#     module_hyperparams = {
+#         'esm_embed': {'lr': cfg.lr_2, 'weight_decay': cfg.weight_decay_2},
+#         'foldx_ddg': {'lr': cfg.lr_3, 'weight_decay': cfg.weight_decay_3},
+#     }
+#     # 2. 初始化参数集合
+#     grouped_params = {k: set() for k in module_hyperparams}  # 关键字组
+#     other_params = set()    # 其他组
+#
+#     # 3. 遍历所有参数并分类
+#     for name, param in model.named_parameters():
+#         matched = False
+#         # 3.1 匹配类属性子模块（esm_embed / adaptmlp_list）
+#         # for module_name in ['esm_embed', 'MoE_blocks']:
+#         for module_name in ['esm_embed']:
+#             if f'.{module_name}.' in name or name.startswith(f'{module_name}.'):
+#                 grouped_params[module_name].add(param)
+#                 matched = True
+#                 break
+#         if matched:
+#             continue
+#
+#         # 3.2 匹配 Sequential 模块（foldx_ddg）
+#         if f'.foldx_ddg.' in name or name.startswith('foldx_ddg.'):
+#             grouped_params['foldx_ddg'].add(param)
+#             matched = True
+#             continue
+#
+#         # 3.3 剩余参数归入其他组
+#         other_params.add(param)
+#
+#     # 4. 构造参数组（带独立超参）
+#     params_to_update = []
+#
+#     # 4.1 添加关键字组（带各自超参）
+#     for module_name, hp in module_hyperparams.items():
+#         if grouped_params[module_name]:
+#             params_to_update.append({
+#                 'params': list(grouped_params[module_name]),
+#                 **hp,
+#             })
+#
+#     # 4.2 添加其他组（默认超参）
+#     if other_params:
+#         params_to_update.append({
+#             'params': list(other_params),
+#             'lr': cfg.lr,
+#             'initial_lr': cfg.lr,
+#             'weight_decay': cfg.weight_decay,
+#         })
+
 def get_optimizer(cfg, model):
-    # 1. 定义模块→超参映射（严格对应你的需求）
+    """创建带分组学习率的优化器"""
+    # 1. 定义模块→超参映射
     module_hyperparams = {
-        'esm_embed': {'lr': cfg.lr_2, 'initial_lr': cfg.lr_2, 'weight_decay': cfg.weight_decay_2},
-        'foldx_ddg': {'lr': cfg.lr_3, 'initial_lr': cfg.lr_3, 'weight_decay': cfg.weight_decay_3},
-        # 'MoE_blocks': {'lr': cfg.lr_4, 'initial_lr': cfg.lr_4, 'weight_decay': cfg.weight_decay_4},
+        'esm_embed': {'lr': cfg.lr_2, 'weight_decay': cfg.weight_decay_2},
+        'foldx_ddg': {'lr': cfg.lr_3, 'weight_decay': cfg.weight_decay_3},
+        # 'MoE_blocks': {'lr': cfg.lr_4, 'weight_decay': cfg.weight_decay_4},
     }
+
     # 2. 初始化参数集合
-    grouped_params = {k: set() for k in module_hyperparams}  # 关键字组
-    other_params = set()    # 其他组
+    grouped_params = {k: [] for k in module_hyperparams}  # 使用list而不是set
+    other_params = []
 
     # 3. 遍历所有参数并分类
     for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue  # 跳过不需要梯度的参数
+
         matched = False
-        # 3.1 匹配类属性子模块（esm_embed / adaptmlp_list）
-        # for module_name in ['esm_embed', 'MoE_blocks']:
-        for module_name in ['esm_embed']:
-            if f'.{module_name}.' in name or name.startswith(f'{module_name}.'):
-                grouped_params[module_name].add(param)
-                matched = True
-                break
-        if matched:
-            continue
 
-        # 3.2 匹配 Sequential 模块（foldx_ddg）
-        if f'.foldx_ddg.' in name or name.startswith('foldx_ddg.'):
-            grouped_params['foldx_ddg'].add(param)
+        # 3.1 匹配esm_embed
+        if '.esm_embed.' in name or name.startswith('esm_embed.'):
+            grouped_params['esm_embed'].append(param)
             matched = True
-            continue
 
-        # 3.3 剩余参数归入其他组
-        other_params.add(param)
+        # 3.2 匹配foldx_ddg
+        if not matched and ('.foldx_ddg.' in name or name.startswith('foldx_ddg.')):
+            grouped_params['foldx_ddg'].append(param)
+            matched = True
 
-    # 4. 构造参数组（带独立超参）
+        # 3.3 剩余参数
+        if not matched:
+            other_params.append(param)
+
+    # 4. 构造参数组（注意顺序！）
     params_to_update = []
 
-    # 4.1 添加关键字组（带各自超参）
-    for module_name, hp in module_hyperparams.items():
-        if grouped_params[module_name]:
-            params_to_update.append({
-                'params': list(grouped_params[module_name]),
-                **hp,
-            })
+    # 重要：记录参数组对应的模块名称，用于调度器
+    param_group_names = []
+    # 4.1 添加esm_embed组
+    if grouped_params['esm_embed']:
+        params_to_update.append({
+            'params': grouped_params['esm_embed'],
+            'lr': module_hyperparams['esm_embed']['lr'],
+            'weight_decay': module_hyperparams['esm_embed']['weight_decay'],
+        })
+        param_group_names.append('esm_embed')
 
-    # 4.2 添加其他组（默认超参）
+    # 4.2 添加foldx_ddg组
+    if grouped_params['foldx_ddg']:
+        params_to_update.append({
+            'params': grouped_params['foldx_ddg'],
+            'lr': module_hyperparams['foldx_ddg']['lr'],
+            'weight_decay': module_hyperparams['foldx_ddg']['weight_decay'],
+        })
+        param_group_names.append('foldx_ddg')
+
+    # 4.3 添加其他参数组（主模型）
     if other_params:
         params_to_update.append({
-            'params': list(other_params),
+            'params': other_params,
             'lr': cfg.lr,
-            'initial_lr': cfg.lr,
             'weight_decay': cfg.weight_decay,
         })
+        param_group_names.append('main')
 
+    # 5. 创建优化器
     if cfg.type == 'adam':
         optimizer = torch.optim.Adam(
-            # model.parameters(),
             params=params_to_update,
-            lr=cfg.lr,      # global lr
-            weight_decay=cfg.weight_decay,
-            betas=(cfg.beta1, cfg.beta2, )
+            betas=(cfg.beta1, cfg.beta2),
+            eps=cfg.get('eps', 1e-8),
         )
+        # 存储参数组名称供调度器使用
+        optimizer.param_group_names = param_group_names
         return optimizer
     elif cfg.type == 'adamw':
         optimizer = torch.optim.AdamW(
-            params=model.parameters(),
-            lr=cfg.lr,
-            weight_decay=cfg.weight_decay,
-            betas=(cfg.beta1, cfg.beta2, )
+            params=params_to_update,  # 修正：使用分组参数
+            betas=(cfg.beta1, cfg.beta2),
+            eps=cfg.get('eps', 1e-8),
         )
+        optimizer.param_group_names = param_group_names
         return optimizer
     elif cfg.type == 'warm_up':
         optimizer = get_std_opt(
@@ -140,65 +206,123 @@ def get_optimizer(cfg, model):
             warmup=cfg.warmup,
             step=cfg.step,
             factor=cfg.factor,
-            weight_decay=cfg.weight_decay)
+            weight_decay=cfg.weight_decay
+        )
+        optimizer.param_group_names = param_group_names
         return optimizer
-    else:
-        raise NotImplementedError('Optimizer not supported: %s' % cfg.type)
 
-def warmup_CosineAnneal(warm_up_iters, T_iters, lr_max, lr_min, lr_2_max, lr_2_min, lr_3_max, lr_3_min):
-    # 自定义warm up AND Cosine Anneal学习率scheduler
-    #  param_groups[0] to param_groups[2]
-    _lambda = lambda iter: iter / warm_up_iters if iter < warm_up_iters else \
-        (lr_min + 0.5 * (lr_max - lr_min) *(1.0 + math.cos((iter - warm_up_iters) /
-             (T_iters - warm_up_iters) * math.pi))) / lr_max
-    _lambda2 = lambda iter: iter / warm_up_iters if iter < warm_up_iters else \
-        (lr_2_min + 0.5 * (lr_2_max - lr_2_min) *(1.0 + math.cos((iter - warm_up_iters) /
-             (T_iters - warm_up_iters) * math.pi))) / lr_2_max
-    _lambda3 = lambda iter: iter / warm_up_iters if iter < warm_up_iters else \
-        (lr_3_min + 0.5 * (lr_3_max - lr_3_min) *(1.0 + math.cos((iter - warm_up_iters) /
-             (T_iters - warm_up_iters) * math.pi))) / lr_3_max
-    return [_lambda2, _lambda3, _lambda]
+    else:
+        raise NotImplementedError(f'Optimizer not supported: {cfg.type}')
+
+def warmup_CosineAnneal(warm_up_iters, T_iters, param_group_names,
+                        lr_max, lr_min, lr_2_max, lr_2_min, lr_3_max, lr_3_min):
+    """
+    根据参数组名称动态创建lambda函数列表
+
+    Args:
+        warm_up_iters: 预热步数
+        T_iters: 总步数
+        param_group_names: 参数组名称列表，如 ['main', 'esm_embed', 'foldx_ddg']
+        lr_max, lr_min: 主模型参数
+        lr_2_max, lr_2_min: esm_embed参数
+        lr_3_max, lr_3_min: foldx_ddg参数
+    """
+
+    def create_lambda(lr_max, lr_min):
+        def _lambda(iter):
+            if iter < warm_up_iters:
+                # 线性预热
+                return iter / warm_up_iters
+            else:
+                # Cosine Annealing
+                progress = min(1.0, (iter - warm_up_iters) / (T_iters - warm_up_iters))
+                cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+                current_lr = lr_min + (lr_max - lr_min) * cosine_decay
+                return current_lr / lr_max
+
+        return _lambda
+
+    # 根据参数组名称创建对应的lambda函数
+    lr_lambdas = []
+    for name in param_group_names:
+        if name == 'main':
+            lr_lambdas.append(create_lambda(lr_max, lr_min))
+        elif name == 'esm_embed':
+            lr_lambdas.append(create_lambda(lr_2_max, lr_2_min))
+        elif name == 'foldx_ddg':
+            lr_lambdas.append(create_lambda(lr_3_max, lr_3_min))
+        else:
+            raise ValueError(f"Unknown param group name: {name}")
+
+    return lr_lambdas
+
 
 def get_scheduler(cfg, optimizer):
-    if cfg.type is None:
+    """创建学习率调度器"""
+    if cfg.type is None or cfg.type == 'none':
         return BlackHole()
+
     elif cfg.type == 'plateau':
-        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        return ReduceLROnPlateau(
             optimizer,
             factor=cfg.factor,
             patience=cfg.patience,
             min_lr=cfg.min_lr,
         )
+
     elif cfg.type == 'multistep':
-        return torch.optim.lr_scheduler.MultiStepLR(
+        return MultiStepLR(
             optimizer,
             milestones=cfg.milestones,
             gamma=cfg.gamma,
         )
+
     elif cfg.type == 'exp':
-        return torch.optim.lr_scheduler.ExponentialLR(
+        return ExponentialLR(
             optimizer,
             gamma=cfg.gamma,
         )
-    elif cfg.type == 'lambdaLR' and isinstance(optimizer, torch.optim.Adam):
-        return torch.optim.lr_scheduler.LambdaLR(
-            optimizer,
-            lr_lambda=warmup_CosineAnneal(
-                warm_up_iters=cfg.warm_up_iters,
-                T_iters=cfg.T_iters,
-                lr_max=cfg.lr_max,
-                lr_min=cfg.lr_min,
-                lr_2_max=cfg.lr_2_max,
-                lr_2_min=cfg.lr_2_min,
-                lr_3_max=cfg.lr_3_max,
-                lr_3_min=cfg.lr_3_min,
-            ),
-            last_epoch=0,
+
+    elif cfg.type == 'lambdaLR':
+        # 检查优化器类型
+        if not isinstance(optimizer, (torch.optim.Adam, torch.optim.AdamW)):
+            print(f"Warning: lambdaLR scheduler with {type(optimizer)} may not work properly")
+
+        # 获取参数组名称（在get_optimizer中设置）
+        if not hasattr(optimizer, 'param_group_names'):
+            raise AttributeError(
+                "Optimizer does not have 'param_group_names' attribute. "
+                "Make sure you're using the fixed get_optimizer function."
+            )
+
+        # 创建lambda函数列表
+        lr_lambdas = warmup_CosineAnneal(
+            warm_up_iters=cfg.warm_up_iters,
+            T_iters=cfg.T_iters,
+            param_group_names=optimizer.param_group_names,
+            lr_max=cfg.lr_max,
+            lr_min=cfg.lr_min,
+            lr_2_max=cfg.lr_2_max,
+            lr_2_min=cfg.lr_2_min,
+            lr_3_max=cfg.lr_3_max,
+            lr_3_min=cfg.lr_3_min,
         )
-    elif cfg.type is None:
-        return BlackHole()
-    # else:
-    #     raise NotImplementedError('Scheduler not supported: %s' % cfg.type)
+
+        # 验证数量匹配
+        if len(lr_lambdas) != len(optimizer.param_groups):
+            raise ValueError(
+                f"Number of lambdas ({len(lr_lambdas)}) != "
+                f"number of param groups ({len(optimizer.param_groups)})"
+            )
+
+        return LambdaLR(
+            optimizer,
+            lr_lambda=lr_lambdas,
+            last_epoch=cfg.get('last_epoch', -1),  # -1表示从当前状态开始
+        )
+
+    else:
+        raise NotImplementedError(f'Scheduler not supported: {cfg.type}')
 
 
 def log_losses(loss, loss_dict, scalar_dict, it, tag, logger=BlackHole(), writer=BlackHole()):

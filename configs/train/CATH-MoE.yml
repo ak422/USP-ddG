@@ -36,9 +36,9 @@ model:
     edge_feat_dim: 256
     num_layers: 4
   hidden_dim: 128
-  k1: 32    # knn neighbors
+  k1: 35    # knn neighbors
   k2: 0     # long range
-  k3: 3     # neighbors of sequence
+  k3: 1     # neighbors of sequence
   long_range_seq: 0
   dropout: 0.1
   noise_bb: &noise_bb 0.1
@@ -105,21 +105,23 @@ train:
   max_grad_norm: 100.0
   optimizer:
     type: adam
-    lr: &lr 5.e-4     #  lr_max
-    lr_2: &lr_2 5.e-6   #  lr_max_esm2
-    lr_3: &lr_3 5.e-5   #  lr_max_foldx
+    lr: &lr 4.e-4     #  lr_max
+    lr_2: &lr_2 4.e-6   #  lr_max_esm2
+    lr_3: &lr_3 4.e-5   #  lr_max_foldx
     weight_decay: 1.e-4
     weight_decay_2: 5.e-6
     weight_decay_3: 5.e-6
     beta1: 0.9
     beta2: 0.999
+    eps: 1e-8
   scheduler:
     type: lambdaLR
     warm_up_iters: 4000
     T_iters: 5000  # Cycle
     lr_max: *lr
-    lr_min: 1.e-4
+    lr_min: 4.e-6
     lr_2_max: *lr_2
-    lr_2_min: 1.e-6
+    lr_2_min: 4.e-8
     lr_3_max: *lr_3
-    lr_3_min: 1.e-5
+    lr_3_min: 4.e-7
+    last_epoch: -1  # -1表示从当前epoch开始

@@ -123,6 +123,7 @@ if __name__ == '__main__':
 
         # Prepare data
         train_loader = dataset_mgr.get_train_loader(fold)
+        train_loader.sampler.set_epoch(epoch)
         train_loader = tqdm(train_loader, file=sys.stdout, bar_format="{l_bar}%s{bar}%s{r_bar}" % (Fore.WHITE, Fore.RESET))
 
         for step, data in enumerate(train_loader):
@@ -144,8 +145,8 @@ if __name__ == '__main__':
             optimizer.step()
             optimizer.zero_grad()
 
-            if config.train.optimizer.type == 'adam':
-                scheduler.step()
+            # if config.train.optimizer.type == 'adam':
+            #     scheduler.step()
 
         time_backward_end = current_milli_time()
         logger.info(f'[epoch {epoch}/{config.train.max_epochs} fold {fold+1}/{config.train.num_cvfolds}] mean loss {mean_loss.item():.4f}')

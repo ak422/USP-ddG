@@ -1123,8 +1123,8 @@ if __name__ == '__main__':
         os.system(f'python build_mutant_case.py --subset {subset}')  # generate mutant structures by FoldX
     else:
         blocklist = frozenset({'1KBH'})
-        # os.system('python build_mutant_skempi.py')  # generate mutant structures by FoldX
-        # os.system('python build_mutant_skempi2.py')  # generate mutant structures by FoldX
+        os.system('python build_mutant_skempi.py')  # generate mutant structures by FoldX
+        # os.system('python build_mutant_skempi2.py')  # 根据skempi_v2.csv进行生成
 
     dataset = SkempiDataset_lmdb(
         csv_path = args.csv_path,

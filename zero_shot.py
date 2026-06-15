@@ -47,8 +47,6 @@ import multiprocessing as mp
 import glob
 from src.utils.data_skempi_mpnn import MPNNPaddingCollate
 
-import time
-
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -63,9 +61,6 @@ def set_seed(seed):
 
 
 def pdb2dict(pdb_path):
-    # ca_pattern = re.compile(
-    #     "^ATOM\s{2,6}\d{1,5}\s{2}CA\s[\sA]([A-Z]{3})\s([\s\w])|^HETATM\s{0,4}\d{1,5}\s{2}CA\s[\sA](MSE)\s([\s\w])")
-
     ca_pattern = re.compile(
         r"^ATOM\s{2,6}\d{1,5}\s{2}CA\s[\sA]([A-Z]{3})\s([\s\w])|^HETATM\s{0,4}\d{1,5}\s{2}CA\s[\sA](MSE)\s([\s\w])"
     )
@@ -346,11 +341,16 @@ class CaseDataset(Dataset):
     def generate_esm2(self, pdbcode_list):
 
         tokenizer = AutoTokenizer.from_pretrained("./data/esm2_t33_650M_UR50D")
-        esm_model = EsmModel.from_pretrained("./data/esm2_t33_650M_UR50D", device_map="auto", max_memory={0: "4GiB"})
+        # esm_model = EsmModel.from_pretrained("./data/esm2_t33_650M_UR50D",
+        #                                      device_map="auto", max_memory={0: "4GiB"})
+        esm_model = EsmModel.from_pretrained(
+            "./data/esm2_t33_650M_UR50D",
+            device_map=None  # 关闭auto
+        ).to(self.device)  # 移动到GPU0
         esm_model.eval()
 
         # 获取模型所在设备
-        device = next(esm_model.parameters()).device
+        # device = next(esm_model.parameters()).device
 
         esm_results = {"wt": {}, "mt": {}}
 
@@ -370,7 +370,7 @@ class CaseDataset(Dataset):
                 )["input_ids"].squeeze(0)
 
                 # 将输入数据移到模型所在设备
-                sequences_tokenized = sequences_tokenized.to(device)
+                sequences_tokenized = sequences_tokenized.to(self.device)
 
                 with torch.no_grad():
                     last_hidden_states = esm_model(
@@ -392,7 +392,7 @@ class CaseDataset(Dataset):
                 )["input_ids"].squeeze(0)
 
                 # 将输入数据移到模型所在设备
-                sequences_tokenized = sequences_tokenized.to(device)
+                sequences_tokenized = sequences_tokenized.to(self.device)
 
                 with torch.no_grad():
                     last_hidden_states = esm_model(
@@ -677,7 +677,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str)
     parser.add_argument('--output_results', type=str, default='case_results.csv')
-    parser.add_argument('--output_metrics', type=str, default='case_metrics.csv')
+    # parser.add_argument('--output_metrics', type=str, default='case_metrics.csv')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--num_cvfolds', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=16)

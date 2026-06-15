@@ -123,7 +123,6 @@ if __name__ == '__main__':
                             'ddG_pred': ddg_pred.item()
                         })
         results_fold = pd.DataFrame(results_fold)
-        results_fold.to_csv('five-models.csv', index=False)
         results_fold = results_fold.groupby(['pdbcode', 'complex_PPI', 'protein_group']).agg(ddG_pred_mean=("ddG_pred", "mean"),
                                                                               ddG=("ddG", "mean"),
                                                                               num_muts=("num_muts", "mean")).reset_index()
@@ -135,7 +134,7 @@ if __name__ == '__main__':
     results.replace("1.00E+50", "1E50", inplace=True)
     results.to_csv(args.output_results, index=False)
 
-    # results = pd.read_csv('five-models.csv')
+    results = pd.read_csv(args.output_results)
     results = results.groupby(['pdbcode', 'complex_PPI', 'protein_group']).agg(ddG_pred_mean=("ddG_pred", "mean"),
                                                          ddG=("ddG", "mean"),
                                                          num_muts=("num_muts", "mean")).reset_index()
