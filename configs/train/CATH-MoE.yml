@@ -23,11 +23,9 @@ checkpoints:
 #    - ./trained_models/05_03_12_20_33_USP_ddG-3.pt
 
   #
-    - ./trained_models/05_04_04_17_32_USP_ddG-2.pt
-    - ./trained_models/05_04_04_17_42_USP_ddG-2.pt
-    - ./trained_models/05_04_08_21_31_USP_ddG-2.pt
-    - ./trained_models/05_04_10_08_11_USP_ddG-2.pt
-    - ./trained_models/05_04_16_40_33_USP_ddG-2.pt
+    - ./trained_models/06_15_12_55_52_USP_ddG.pt
+    - ./trained_models/06_15_12_57_52_USP_ddG.pt
+
 
 early_stoppingdir: ./early_stopping
 model:
@@ -96,7 +94,7 @@ train:
     loss_moe: 1.0
 
   max_epochs: 100
-  early_stopping_epoch: 65
+  early_stopping_epoch: 80
   val_freq: 5
   batch_size: 12
   seed: 2024
@@ -105,9 +103,9 @@ train:
   max_grad_norm: 100.0
   optimizer:
     type: adam
-    lr: &lr 4.e-4     #  lr_max
-    lr_2: &lr_2 4.e-6   #  lr_max_esm2
-    lr_3: &lr_3 4.e-5   #  lr_max_foldx
+    lr: &lr 5.e-4     #  lr_max
+    lr_2: &lr_2 5.e-6   #  lr_max_esm2
+    lr_3: &lr_3 5.e-5   #  lr_max_foldx
     weight_decay: 1.e-4
     weight_decay_2: 5.e-6
     weight_decay_3: 5.e-6
@@ -116,8 +114,9 @@ train:
     eps: 1e-8
   scheduler:
     type: lambdaLR
-    warm_up_iters: 4000
-    T_iters: 5000  # Cycle
+    warm_up_iters: 492        # ≈1 epoch 预热
+    T_0: 22140                # 覆盖约44 epoch，单周期余弦衰减到底（warm_up+T_0≈45 epoch）
+    T_mult: 2
     lr_max: *lr
     lr_min: 4.e-6
     lr_2_max: *lr_2

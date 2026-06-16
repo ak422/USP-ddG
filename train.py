@@ -143,10 +143,9 @@ if __name__ == '__main__':
 
             orig_grad_norm = clip_grad_norm_(model.parameters(), config.train.max_grad_norm)
             optimizer.step()
+            if config.train.optimizer.type == 'adam':
+                scheduler.step()
             optimizer.zero_grad()
-
-            # if config.train.optimizer.type == 'adam':
-            #     scheduler.step()
 
         time_backward_end = current_milli_time()
         logger.info(f'[epoch {epoch}/{config.train.max_epochs} fold {fold+1}/{config.train.num_cvfolds}] mean loss {mean_loss.item():.4f}')

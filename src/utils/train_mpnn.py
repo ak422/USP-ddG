@@ -3,6 +3,7 @@ import torch
 import os
 import math
 import matplotlib.pyplot as plt
+from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau, MultiStepLR, ExponentialLR
 
 from src.utils.protein.constants import chi_pi_periodic, AA
 from src.utils.misc import BlackHole
@@ -52,9 +53,15 @@ class NoamOpt:
         self.optimizer.zero_grad()
 
     def state_dict(self):
-        return self.optimizer.state_dict()
+        return {
+            'step': self._step,
+            'rate': self._rate,
+            'optimizer': self.optimizer.state_dict(),
+        }
     def load_state_dict(self):
-        return self.optimizer.load_state_dict()
+        self._step = state_dict['step']
+        self._rate = state_dict['rate']
+        self.optimizer.load_state_dict(state_dict['optimizer'])
 
 def get_std_opt(params, d_model, warmup, step, factor, weight_decay):
     # d_model：模型特征维度，gradual warmup学习率自适应优化器
@@ -62,65 +69,12 @@ def get_std_opt(params, d_model, warmup, step, factor, weight_decay):
         d_model, factor, warmup, torch.optim.Adam(params, lr=0, weight_decay= weight_decay, betas=(0.9, 0.98), eps=1e-9), step
     )
 
-# def get_optimizer(cfg, model):
-#     # 1. 定义模块→超参映射（严格对应你的需求）
-#     module_hyperparams = {
-#         'esm_embed': {'lr': cfg.lr_2, 'weight_decay': cfg.weight_decay_2},
-#         'foldx_ddg': {'lr': cfg.lr_3, 'weight_decay': cfg.weight_decay_3},
-#     }
-#     # 2. 初始化参数集合
-#     grouped_params = {k: set() for k in module_hyperparams}  # 关键字组
-#     other_params = set()    # 其他组
-#
-#     # 3. 遍历所有参数并分类
-#     for name, param in model.named_parameters():
-#         matched = False
-#         # 3.1 匹配类属性子模块（esm_embed / adaptmlp_list）
-#         # for module_name in ['esm_embed', 'MoE_blocks']:
-#         for module_name in ['esm_embed']:
-#             if f'.{module_name}.' in name or name.startswith(f'{module_name}.'):
-#                 grouped_params[module_name].add(param)
-#                 matched = True
-#                 break
-#         if matched:
-#             continue
-#
-#         # 3.2 匹配 Sequential 模块（foldx_ddg）
-#         if f'.foldx_ddg.' in name or name.startswith('foldx_ddg.'):
-#             grouped_params['foldx_ddg'].add(param)
-#             matched = True
-#             continue
-#
-#         # 3.3 剩余参数归入其他组
-#         other_params.add(param)
-#
-#     # 4. 构造参数组（带独立超参）
-#     params_to_update = []
-#
-#     # 4.1 添加关键字组（带各自超参）
-#     for module_name, hp in module_hyperparams.items():
-#         if grouped_params[module_name]:
-#             params_to_update.append({
-#                 'params': list(grouped_params[module_name]),
-#                 **hp,
-#             })
-#
-#     # 4.2 添加其他组（默认超参）
-#     if other_params:
-#         params_to_update.append({
-#             'params': list(other_params),
-#             'lr': cfg.lr,
-#             'initial_lr': cfg.lr,
-#             'weight_decay': cfg.weight_decay,
-#         })
-
 def get_optimizer(cfg, model):
     """创建带分组学习率的优化器"""
     # 1. 定义模块→超参映射
     module_hyperparams = {
         'esm_embed': {'lr': cfg.lr_2, 'weight_decay': cfg.weight_decay_2},
         'foldx_ddg': {'lr': cfg.lr_3, 'weight_decay': cfg.weight_decay_3},
-        # 'MoE_blocks': {'lr': cfg.lr_4, 'weight_decay': cfg.weight_decay_4},
     }
 
     # 2. 初始化参数集合
@@ -185,7 +139,7 @@ def get_optimizer(cfg, model):
         optimizer = torch.optim.Adam(
             params=params_to_update,
             betas=(cfg.beta1, cfg.beta2),
-            eps=cfg.get('eps', 1e-8),
+            eps=float(cfg.get('eps', 1e-8)),
         )
         # 存储参数组名称供调度器使用
         optimizer.param_group_names = param_group_names
@@ -194,7 +148,7 @@ def get_optimizer(cfg, model):
         optimizer = torch.optim.AdamW(
             params=params_to_update,  # 修正：使用分组参数
             betas=(cfg.beta1, cfg.beta2),
-            eps=cfg.get('eps', 1e-8),
+            eps=float(cfg.get('eps', 1e-8)),
         )
         optimizer.param_group_names = param_group_names
         return optimizer
@@ -214,14 +168,15 @@ def get_optimizer(cfg, model):
     else:
         raise NotImplementedError(f'Optimizer not supported: {cfg.type}')
 
-def warmup_CosineAnneal(warm_up_iters, T_iters, param_group_names,
-                        lr_max, lr_min, lr_2_max, lr_2_min, lr_3_max, lr_3_min):
+def warmup_CosineAnnealRestarts(warm_up_iters, T_0, T_mult, param_group_names,
+                                lr_max, lr_min, lr_2_max, lr_2_min, lr_3_max, lr_3_min):
     """
-    根据参数组名称动态创建lambda函数列表
+    根据参数组名称动态创建lambda函数列表（Warmup + Cosine Annealing with Warm Restarts）
 
     Args:
         warm_up_iters: 预热步数
-        T_iters: 总步数
+        T_0: 第一个restart周期的长度（步数）
+        T_mult: 每次restart后周期长度是否倍增（1=固定长度，2=翻倍）
         param_group_names: 参数组名称列表，如 ['main', 'esm_embed', 'foldx_ddg']
         lr_max, lr_min: 主模型参数
         lr_2_max, lr_2_min: esm_embed参数
@@ -234,8 +189,15 @@ def warmup_CosineAnneal(warm_up_iters, T_iters, param_group_names,
                 # 线性预热
                 return iter / warm_up_iters
             else:
-                # Cosine Annealing
-                progress = min(1.0, (iter - warm_up_iters) / (T_iters - warm_up_iters))
+                # 找到当前处于第几个 cycle
+                iter_after_warmup = iter - warm_up_iters
+                T_cur = T_0
+                cycle_start = 0
+                while iter_after_warmup >= cycle_start + T_cur:
+                    cycle_start += T_cur
+                    T_cur *= T_mult
+
+                progress = (iter_after_warmup - cycle_start) / T_cur
                 cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
                 current_lr = lr_min + (lr_max - lr_min) * cosine_decay
                 return current_lr / lr_max
@@ -296,9 +258,10 @@ def get_scheduler(cfg, optimizer):
             )
 
         # 创建lambda函数列表
-        lr_lambdas = warmup_CosineAnneal(
+        lr_lambdas = warmup_CosineAnnealRestarts(
             warm_up_iters=cfg.warm_up_iters,
-            T_iters=cfg.T_iters,
+            T_0=cfg.T_0,
+            T_mult=cfg.T_mult,
             param_group_names=optimizer.param_group_names,
             lr_max=cfg.lr_max,
             lr_min=cfg.lr_min,
