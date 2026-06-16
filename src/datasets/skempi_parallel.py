@@ -728,21 +728,21 @@ class SkempiDataset_lmdb(Dataset):
         self.db_keys: Optional[List[PdbCodeType]] = None
         self._load_structures(reset)
 
-        # config, _ = load_config('../../configs/inference/zero_shot.yml')
-        # set_seed(config.seed)
-        # self.ddg_predictor = DDGPredictor(config)
-        # self.ddg_predictor.mpnn.load_state_dict(
-        #     torch.load('../../ckpt/soluble_model_weights/v_48_020.pt', map_location=device, weights_only=False)['model_state_dict'],
-        #     strict=False
-        # )
-        # MPNN_PAD_VALUES = {
-        #     'aa': 0,
-        #     'aa_mut': 0,
-        #     'chain_nb': 0,
-        #     'residue_idx': -100,
-        #     'mask': 0,
-        # }
-        # self.MPNNpadding_collate = MPNNPaddingCollate(patch_size=256, pad_values=MPNN_PAD_VALUES)
+        config, _ = load_config('../../configs/inference/zero_shot.yml')
+        set_seed(config.seed)
+        self.ddg_predictor = DDGPredictor(config)
+        self.ddg_predictor.mpnn.load_state_dict(
+            torch.load('../../ckpt/soluble_model_weights/v_48_020.pt', map_location=device, weights_only=False)['model_state_dict'],
+            strict=False
+        )
+        MPNN_PAD_VALUES = {
+            'aa': 0,
+            'aa_mut': 0,
+            'chain_nb': 0,
+            'residue_idx': -100,
+            'mask': 0,
+        }
+        self.MPNNpadding_collate = MPNNPaddingCollate(patch_size=256, pad_values=MPNN_PAD_VALUES)
 
     def _load_entries(self, reset):
         if not os.path.exists(self.entries_cache) or reset:
@@ -1064,17 +1064,17 @@ class SkempiDataset_lmdb(Dataset):
         assert len(entry['mutations']) == torch.sum(data_dict_wt['aa'] != data_dict_mt['aa']),f"ID={data_dict_wt['#Pdb']},{len(entry['mutations'])},{torch.sum(data_dict_wt['aa'] != data_dict_mt['aa'])}"
         data_dict_wt['mut_flag'] = data_dict_mt['mut_flag'] = (data_dict_wt['aa'] != data_dict_mt['aa'])
 
-        # # # BA-cycle
-        # self.ddg_predictor.eval()
-        # data_dict_wt['aa_mut'] = data_dict_mt['aa']
-        # batch = self.MPNNpadding_collate([data_dict_wt])
-        # with torch.no_grad():
-        #     wt_scores_cycle, mut_scores_cycle = self.ddg_predictor(batch)
-        # data_dict_wt['wt_scores_cycle'] = np.float32(wt_scores_cycle.item())
-        # data_dict_wt['mut_scores_cycle'] = np.float32(mut_scores_cycle.item())
-        # data_dict_mt['wt_scores_cycle'] = np.float32(wt_scores_cycle.item())
-        # data_dict_mt['mut_scores_cycle'] = np.float32(mut_scores_cycle.item())
-        # return pdbcode, wt_scores_cycle, mut_scores_cycle
+        # # BA-cycle
+        self.ddg_predictor.eval()
+        data_dict_wt['aa_mut'] = data_dict_mt['aa']
+        batch = self.MPNNpadding_collate([data_dict_wt])
+        with torch.no_grad():
+            wt_scores_cycle, mut_scores_cycle = self.ddg_predictor(batch)
+        data_dict_wt['wt_scores_cycle'] = np.float32(wt_scores_cycle.item())
+        data_dict_wt['mut_scores_cycle'] = np.float32(mut_scores_cycle.item())
+        data_dict_mt['wt_scores_cycle'] = np.float32(wt_scores_cycle.item())
+        data_dict_mt['mut_scores_cycle'] = np.float32(mut_scores_cycle.item())
+        return pdbcode, wt_scores_cycle, mut_scores_cycle
 
 
         if self.transform is not None:

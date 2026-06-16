@@ -224,7 +224,8 @@ class SkempiDatasetManager(object):
             # shuffle=True,
             sampler=sampler,
             shuffle=False,    # 采样器已经控制顺序，无需再 shuffle
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            drop_last=True
         )
 
         val_loader = DataLoader(

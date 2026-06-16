@@ -168,54 +168,100 @@ def get_optimizer(cfg, model):
     else:
         raise NotImplementedError(f'Optimizer not supported: {cfg.type}')
 
-def warmup_CosineAnnealRestarts(warm_up_iters, T_0, T_mult, param_group_names,
-                                lr_max, lr_min, lr_2_max, lr_2_min, lr_3_max, lr_3_min):
+def warmup_CosineStable(
+        warm_up_iters,
+        T_0,
+        param_group_names,
+
+        lr_max, lr_stable,
+        lr_2_max, lr_2_stable,
+        lr_3_max, lr_3_stable,
+):
     """
-    根据参数组名称动态创建lambda函数列表（Warmup + Cosine Annealing with Warm Restarts）
+    Warmup + Cosine Decay + Stable LR
+
+    特点:
+    1. 前期线性 warmup
+    2. 中期按周期 T_0 进行 cosine 平滑下降
+    3. 后期稳定在 lr_stable
+    4. 无 restart，更适合 protein representation learning
 
     Args:
-        warm_up_iters: 预热步数
-        T_0: 第一个restart周期的长度（步数）
-        T_mult: 每次restart后周期长度是否倍增（1=固定长度，2=翻倍）
-        param_group_names: 参数组名称列表，如 ['main', 'esm_embed', 'foldx_ddg']
-        lr_max, lr_min: 主模型参数
-        lr_2_max, lr_2_min: esm_embed参数
-        lr_3_max, lr_3_min: foldx_ddg参数
+        warm_up_iters: warmup步数
+        T_0: cosine 衰减周期（步数）
+
+        param_group_names:
+            ['main', 'esm_embed', 'foldx_ddg']
+
+        lr_max/lr_stable:
+            不同参数组的最大学习率和稳定学习率
     """
 
-    def create_lambda(lr_max, lr_min):
-        def _lambda(iter):
-            if iter < warm_up_iters:
-                # 线性预热
-                return iter / warm_up_iters
-            else:
-                # 找到当前处于第几个 cycle
-                iter_after_warmup = iter - warm_up_iters
-                T_cur = T_0
-                cycle_start = 0
-                while iter_after_warmup >= cycle_start + T_cur:
-                    cycle_start += T_cur
-                    T_cur *= T_mult
+    def create_lambda(lr_max, lr_stable):
+        # 稳定学习率比例
+        stable_ratio = lr_stable / lr_max
 
-                progress = (iter_after_warmup - cycle_start) / T_cur
-                cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
-                current_lr = lr_min + (lr_max - lr_min) * cosine_decay
-                return current_lr / lr_max
+        def _lambda(iter):
+            # =========================
+            # 1. Warmup
+            # =========================
+            if iter < warm_up_iters:
+                return float(iter) / float(max(1, warm_up_iters))
+
+            # =========================
+            # 2. Cosine Decay over T_0
+            # =========================
+            progress = (
+                (iter - warm_up_iters)
+                / float(max(1, T_0))
+            )
+            # 防止超过1
+            progress = min(progress, 1.0)
+
+            cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+
+            # =========================
+            # 3. Stable LR
+            # =========================
+            multiplier = (
+                stable_ratio
+                + (1.0 - stable_ratio) * cosine_decay
+            )
+
+            return multiplier
 
         return _lambda
 
-    # 根据参数组名称创建对应的lambda函数
+    # =========================
+    # 根据参数组创建 scheduler
+    # =========================
     lr_lambdas = []
     for name in param_group_names:
         if name == 'main':
-            lr_lambdas.append(create_lambda(lr_max, lr_min))
+            lr_lambdas.append(
+                create_lambda(
+                    lr_max,
+                    lr_stable
+                )
+            )
         elif name == 'esm_embed':
-            lr_lambdas.append(create_lambda(lr_2_max, lr_2_min))
+            lr_lambdas.append(
+                create_lambda(
+                    lr_2_max,
+                    lr_2_stable
+                )
+            )
         elif name == 'foldx_ddg':
-            lr_lambdas.append(create_lambda(lr_3_max, lr_3_min))
+            lr_lambdas.append(
+                create_lambda(
+                    lr_3_max,
+                    lr_3_stable
+                )
+            )
         else:
-            raise ValueError(f"Unknown param group name: {name}")
-
+            raise ValueError(
+                f"Unknown param group name: {name}"
+            )
     return lr_lambdas
 
 
@@ -258,17 +304,16 @@ def get_scheduler(cfg, optimizer):
             )
 
         # 创建lambda函数列表
-        lr_lambdas = warmup_CosineAnnealRestarts(
+        lr_lambdas = warmup_CosineStable(
             warm_up_iters=cfg.warm_up_iters,
             T_0=cfg.T_0,
-            T_mult=cfg.T_mult,
             param_group_names=optimizer.param_group_names,
             lr_max=cfg.lr_max,
-            lr_min=cfg.lr_min,
+            lr_stable=cfg.lr_stable,
             lr_2_max=cfg.lr_2_max,
-            lr_2_min=cfg.lr_2_min,
+            lr_2_stable=cfg.lr_2_stable,
             lr_3_max=cfg.lr_3_max,
-            lr_3_min=cfg.lr_3_min,
+            lr_3_stable=cfg.lr_3_stable,
         )
 
         # 验证数量匹配

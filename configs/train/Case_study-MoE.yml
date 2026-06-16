@@ -90,10 +90,10 @@ train:
   scheduler:
     type: lambdaLR
     warm_up_iters: 4000
-    T_iters: 5000  # Cycle
+    T_0: 5000              # cosine 衰减周期（步数）
     lr_max: *lr
-    lr_min: 0.e-4
+    lr_stable: 0.e-4       # 最终稳定学习率
     lr_2_max: *lr_2
-    lr_2_min: 0.e-6
+    lr_2_stable: 0.e-6
     lr_3_max: *lr_3
-    lr_3_min: 0.e-5
+    lr_3_stable: 0.e-5
