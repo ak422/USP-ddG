@@ -104,23 +104,23 @@ train:
   lr_print_freq: 50     # 每多少个 step 打印一次学习率
   optimizer:
     type: adam
-    lr: &lr 5.e-5           #  lr_max
-    lr_2: &lr_2 1.e-5       #  lr_max_esm2
+    lr: &lr 3.e-4           #  lr_max
+    lr_2: &lr_2 3.e-6       #  lr_max_esm2
     lr_3: &lr_3 1.e-5       #  lr_max_foldx
-    weight_decay: 1.e-5
+    weight_decay: 1.e-4
     weight_decay_2: 1.e-5
-    weight_decay_3: 1.e-5
+    weight_decay_3: 1.e-4
     beta1: 0.9
     beta2: 0.999
     eps: 1.e-8
   scheduler:
     type: lambdaLR
-    warm_up_iters: 4910
-    T_0: 19640              # cosine 衰减周期（步数）
+    warm_up_iters: 3000
+    T_0: 18000              # cosine 衰减周期（步数）
     lr_max: *lr
     lr_stable: 1.e-5       # 最终稳定学习率
     lr_2_max: *lr_2
-    lr_2_stable: 1.e-5
+    lr_2_stable: 3.e-7
     lr_3_max: *lr_3
-    lr_3_stable: 1.e-5
+    lr_3_stable: 1.e-6
     last_epoch: -1
