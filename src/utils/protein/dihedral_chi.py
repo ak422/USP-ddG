@@ -13,15 +13,14 @@ import enum
 from src.utils.protein.constants import AA
 
 
-# BB_ATOMS = ["N", "CA", "C", "O"]
-# SC_ATOMS = [
-#     "CE3",    "CZ",    "SD",    "CD1",    "CB",    "NH1",    "OG1",    "CE1",    "OE1",    "CZ2",
-#     "OH",    "CG",    "CZ3",    "NE",    "CH2",    "OD1",    "NH2",    "ND2",    "OG",    "CG2",
-#     "OE2",   "CD2",    "ND1",   "NE2",    "NZ",    "CD",     "CE2",    "CE",     "OD2",    "SG",
-#     "NE1",   "CG1",    "OXT",
-# ]
-# ALL_ATOMS = BB_ATOMS + SC_ATOMS
-from src.utils.protein.constants import BB_ATOMS, SC_ATOMS, ALL_ATOMS
+BB_ATOMS = ["N", "CA", "C", "O"]
+SC_ATOMS = [
+    "CE3",    "CZ",    "SD",    "CD1",    "CB",    "NH1",    "OG1",    "CE1",    "OE1",    "CZ2",
+    "OH",    "CG",    "CZ3",    "NE",    "CH2",    "OD1",    "NH2",    "ND2",    "OG",    "CG2",
+    "OE2",   "CD2",    "ND1",   "NE2",    "NZ",    "CD",     "CE2",    "CE",     "OD2",    "SG",
+    "NE1",   "CG1",    "OXT",
+]
+ALL_ATOMS = BB_ATOMS + SC_ATOMS
 
 AA3LetterCode = [
     "ALA",

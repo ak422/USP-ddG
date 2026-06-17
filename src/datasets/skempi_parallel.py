@@ -41,22 +41,8 @@ from src.utils.transforms._base import _get_CB_positions
 from src.datasets.InterfaceResidues import interfaceResidues
 from src.utils.protein.constants import AA
 
-from ddg_predictor import DDGPredictor
-from src.utils.misc import load_config
-from src.utils.data_skempi_mpnn import MPNNPaddingCollate
-
 from src.utils.protein.parsers import parse_biopython_structure
 from transformers import AutoTokenizer, AutoModelForMaskedLM
-
-def set_seed(seed):
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = True
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
 
 def pdb2dict(pdb_path):
     ca_pattern = re.compile(
@@ -536,6 +522,7 @@ def load_category_entries(csv_path, cath_domain_path, prior_dir, pdb_wt_dir, pdb
         if not os.path.exists(pdb_wt_path) or not os.path.exists(pdb_mt_path):
             continue
 
+
         # read Interaction Energy of foldX
         foldX_dg_wt = Path(prior_dir, 'wildtype_ddg', f'Interaction_{pdbcode}.txt')
         foldX_dg_mt = Path(prior_dir, 'mutant_ddg', f'Interaction_{pdbcode}.txt')
@@ -636,18 +623,10 @@ def _process_structure(pdb_wt_path, pdb_mt_path, esm2_path, ligand, receptor, pd
     structures.update(_get_structure(pdb_mt_path, interface_mt, chains, pdbcode, esm2_mt, "mt"))
     return structures
 
-def generate_esm2(pdbcode_list, esm2_650M_cache, device):
-    # tokenizer = AutoTokenizer.from_pretrained("../../data/esm2_t33_650M_UR50D",  device_map = "auto", max_memory={0: "8GiB"},offload_folder='offload')
+def generate_esm2(pdbcode_list, esm2_650M_cache):
+    tokenizer = AutoTokenizer.from_pretrained("../../data/esm2_t33_650M_UR50D",  device_map = "auto", max_memory={0: "8GiB"},offload_folder='offload')
+    esm_model = AutoModelForMaskedLM.from_pretrained("../../data/esm2_t33_650M_UR50D", device_map="cpu",  output_hidden_states=True)
     # esm_model = AutoModelForMaskedLM.from_pretrained("../../data/esm2_t33_650M_UR50D",  device_map = "auto", max_memory={0: "8GiB"},  output_hidden_states=True)
-
-    tokenizer = AutoTokenizer.from_pretrained("../../data/esm2_t33_650M_UR50D")
-    esm_model = AutoModelForMaskedLM.from_pretrained(
-        "../../data/esm2_t33_650M_UR50D",
-        output_hidden_states=True,
-        device_map=None  # 关闭auto
-    ).to(device)  # 移动到GPU0
-    esm_model.eval()
-
 
     with h5py.File(esm2_650M_cache, "w") as h5file:
         h5file.create_group('wt')
@@ -658,8 +637,8 @@ def generate_esm2(pdbcode_list, esm2_650M_cache, device):
             # generate sequences
             sequences = pdb2dict(pdb_wt_path)
             for chain, sequence in sequences.items():
-                sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0).to(device)
-                # sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0)
+                # sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0).to('cuda:0')
+                sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0)
                 with torch.no_grad():
                     # last_hidden_states = esm_model(sequences_tokenized.unsqueeze(0)).last_hidden_state[:, 1:-1, :]
                     last_hidden_states = esm_model(sequences_tokenized.unsqueeze(0)).hidden_states[-1][:, 1:-1, :]
@@ -668,8 +647,8 @@ def generate_esm2(pdbcode_list, esm2_650M_cache, device):
 
             sequences = pdb2dict(pdb_mt_path)
             for chain, sequence in sequences.items():
-                sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0).to(device)
-                # sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0)
+                # sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0).to('cuda:0')
+                sequences_tokenized = tokenizer(sequence, return_tensors="pt")['input_ids'].squeeze(0)
                 with torch.no_grad():
                     # last_hidden_states = esm_model(sequences_tokenized.unsqueeze(0)).last_hidden_state[:, 1:-1, :]
                     last_hidden_states = esm_model(sequences_tokenized.unsqueeze(0)).hidden_states[-1][:, 1:-1, :]
@@ -681,11 +660,10 @@ class SkempiDataset_lmdb(Dataset):
     def __init__(
         self, 
         csv_path,
-        prior_dir,
         pdb_wt_dir,
         pdb_mt_dir,
         cache_dir,
-        device,
+        prior_dir,
         cvfold_index=0, 
         num_cvfolds=3, 
         split='train', 
@@ -694,6 +672,7 @@ class SkempiDataset_lmdb(Dataset):
         transform=None, 
         blocklist=frozenset({'1KBH'}), 
         reset=False,
+
         is_single=2,  # 0:single,1:multiple,2:overall
         cath_fold=False,
         PPIformer=False,
@@ -705,7 +684,6 @@ class SkempiDataset_lmdb(Dataset):
         self.pdb_wt_dir = Path(pdb_wt_dir)
         self.pdb_mt_dir = Path(pdb_mt_dir)
         self.cache_dir = Path(cache_dir)
-        self.device = device
         os.makedirs(cache_dir, exist_ok=True)
         self.blocklist = blocklist
         self.transform = transform
@@ -735,28 +713,6 @@ class SkempiDataset_lmdb(Dataset):
         self.db_conn = None
         self.db_keys: Optional[List[PdbCodeType]] = None
         self._load_structures(reset)
-
-        # MPNN scorer 延迟初始化，仅在计算 cycle scores 时调用
-        self.ddg_predictor = None
-        self.MPNNpadding_collate = None
-
-    def _init_mpnn_scorer(self):
-        """初始化 ProteinMPNN scorer，用于计算 wt_scores_cycle 和 mut_scores_cycle。"""
-        config, _ = load_config('../../configs/inference/zero_shot.yml')
-        set_seed(config.seed)
-        self.ddg_predictor = DDGPredictor(config)
-        self.ddg_predictor.mpnn.load_state_dict(
-            torch.load('../../ckpt/soluble_model_weights/v_48_020.pt', map_location=self.device, weights_only=False)['model_state_dict'],
-            strict=False
-        )
-        MPNN_PAD_VALUES = {
-            'aa': 0,
-            'aa_mut': 0,
-            'chain_nb': 0,
-            'residue_idx': -100,
-            'mask': 0,
-        }
-        self.MPNNpadding_collate = MPNNPaddingCollate(patch_size=256, pad_values=MPNN_PAD_VALUES)
 
     def _load_entries(self, reset):
         if not os.path.exists(self.entries_cache) or reset:
@@ -804,6 +760,7 @@ class SkempiDataset_lmdb(Dataset):
             df.replace("1.00E+50", "1E50", inplace=True)
 
             for i, row in df.iterrows():
+                # if row['complex_PPI'] in complex_list:
                 if row['cath_fold'] == 'train':
                     train_split.append(row['complex_PPI'])
                 elif row['cath_fold'] == 'val':
@@ -830,6 +787,7 @@ class SkempiDataset_lmdb(Dataset):
             df.replace("1.00E+50", "1E50", inplace=True)
 
             for i, row in df.iterrows():
+                # if row['complex_PPI'] in complex_list:
                 if row['PPIformer'] == 'train':
                     train_split.append(row['complex_PPI'])
                 elif row['PPIformer'] == 'val':
@@ -927,7 +885,7 @@ class SkempiDataset_lmdb(Dataset):
 
         # generate esm2 emebddings
         if not self.esm2_650M_cache.exists():
-            generate_esm2(pdbcode_list, self.esm2_650M_cache, self.device)
+            generate_esm2(pdbcode_list, self.esm2_650M_cache)
 
         for (pdbcode, pdb_wt_path, pdb_mt_path, ligand, receptor)  in tqdm(pdbcode_list, desc='Structures'):
             if not os.path.exists(pdb_wt_path):
@@ -1020,11 +978,12 @@ class SkempiDataset_lmdb(Dataset):
     def __len__(self):
         return len(self.entries)
 
-    def _build_data_dicts(self, entry):
-        """根据 entry 从 LMDB 构建 wt/mt 的 data_dict。"""
+    def __getitem__(self, index):
+        entry = self.entries[index]  # 按蛋白质复合物结构读取
         pdbcode = entry['#Pdb']
-        data_wt, chains_wt = self._get_from_db("wt_" + pdbcode)
-        data_mt, chains_mt = self._get_from_db("mt_" + pdbcode)
+
+        data_wt, chains_wt = self._get_from_db("wt_" + pdbcode)  # Made a copy
+        data_mt, chains_mt = self._get_from_db("mt_" + pdbcode)  # Made a copy
 
         data_dict_wt = defaultdict(list)
         data_dict_mt = defaultdict(list)
@@ -1053,8 +1012,10 @@ class SkempiDataset_lmdb(Dataset):
         for k, v in data_dict_mt.items():
             data_dict_mt[k] = torch.cat(data_dict_mt[k], dim=0)
 
-        data_dict_wt['centrality'] = self._compute_degree_centrality(data_dict_wt)
-        data_dict_mt['centrality'] = self._compute_degree_centrality(data_dict_mt)
+        # centrality
+        # pos_heavyatom: ['N', 'CA', 'C', 'O', 'CB']
+        data_dict_wt['centrality'] = self._compute_degree_centrality(data_dict_wt)  # Cb原子
+        data_dict_mt['centrality'] = self._compute_degree_centrality(data_dict_mt)  # Cb原子
 
         keys = {'id', 'complex_PPI', 'mutstr', 'num_muts', '#Pdb', 'ddG', 'protein_group',
                 'cath_domain', 'cath_label_index', 'wt_scores_cycle', 'mut_scores_cycle'}
@@ -1064,95 +1025,8 @@ class SkempiDataset_lmdb(Dataset):
         data_dict_wt['inter_energy'] = entry['inter_energy_wt']
         data_dict_mt['inter_energy'] = entry['inter_energy_mt']
 
-        assert len(entry['mutations']) == torch.sum(data_dict_wt['aa'] != data_dict_mt['aa']), \
-            f"ID={data_dict_wt['#Pdb']},{len(entry['mutations'])},{torch.sum(data_dict_wt['aa'] != data_dict_mt['aa'])}"
+        assert len(entry['mutations']) == torch.sum(data_dict_wt['aa'] != data_dict_mt['aa']),f"ID={data_dict_wt['id']},{len(entry['mutations'])},{torch.sum(data_dict_wt['aa'] != data_dict_mt['aa'])}"
         data_dict_wt['mut_flag'] = data_dict_mt['mut_flag'] = (data_dict_wt['aa'] != data_dict_mt['aa'])
-
-        return data_dict_wt, data_dict_mt
-
-    def _compute_mpnn_cycle_scores(self, data_dict_wt, data_dict_mt):
-        """使用 ProteinMPNN 计算 wt_scores_cycle 和 mut_scores_cycle。"""
-        if self.ddg_predictor is None:
-            self._init_mpnn_scorer()
-
-        self.ddg_predictor.eval()
-        data_dict_wt['aa_mut'] = data_dict_mt['aa']
-        batch = self.MPNNpadding_collate([data_dict_wt])
-        with torch.no_grad():
-            wt_scores_cycle, mut_scores_cycle = self.ddg_predictor(batch)
-        return wt_scores_cycle, mut_scores_cycle
-
-    def _update_csv(self, csv_path, all_data):
-        """将 all_data 按 '#Pdb' 合并到现有 CSV 中。"""
-        import csv
-        existing_rows = []
-        try:
-            with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                fieldnames = reader.fieldnames
-                for row in reader:
-                    existing_rows.append(row)
-        except FileNotFoundError:
-            fieldnames = ['#Pdb', 'wt_scores_cycle', 'mut_scores_cycle']
-            print(f"文件 {csv_path} 不存在，将创建新文件。")
-
-        existing_dict = {row['#Pdb']: row for row in existing_rows}
-        for data_item in all_data:
-            pdb = data_item['#Pdb']
-            if pdb in existing_dict:
-                existing_dict[pdb]['wt_scores_cycle'] = data_item['wt_scores_cycle']
-                existing_dict[pdb]['mut_scores_cycle'] = data_item['mut_scores_cycle']
-            else:
-                existing_dict[pdb] = {
-                    '#Pdb': pdb,
-                    'wt_scores_cycle': data_item['wt_scores_cycle'],
-                    'mut_scores_cycle': data_item['mut_scores_cycle']
-                }
-
-        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-            if 'fieldnames' not in locals():
-                fieldnames = ['#Pdb', 'wt_scores_cycle', 'mut_scores_cycle']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for row in existing_dict.values():
-                writer.writerow(row)
-
-    def update_csv_with_mpnn_scores(self, csv_path=None):
-        """
-        为所有 entry 计算 MPNN cycle scores，并更新到 csv_path。
-        """
-        csv_path = csv_path or self.csv_path
-        if self.ddg_predictor is None:
-            self._init_mpnn_scorer()
-
-        all_data = []
-        dataset_size = len(self)
-        for idx in range(dataset_size):
-            entry = self.entries[idx]
-            data_dict_wt, data_dict_mt = self._build_data_dicts(entry)
-            wt_scores_cycle, mut_scores_cycle = self._compute_mpnn_cycle_scores(data_dict_wt, data_dict_mt)
-
-            if torch.is_tensor(wt_scores_cycle):
-                wt_scores_cycle = wt_scores_cycle.item()
-            if torch.is_tensor(mut_scores_cycle):
-                mut_scores_cycle = mut_scores_cycle.item()
-
-            all_data.append({
-                '#Pdb': entry['#Pdb'],
-                'wt_scores_cycle': wt_scores_cycle,
-                'mut_scores_cycle': mut_scores_cycle
-            })
-
-            if (idx + 1) % 10 == 0:
-                print(f"Processed {idx + 1}/{dataset_size} samples...")
-
-        self._update_csv(csv_path, all_data)
-        print(f"已更新 CSV 文件: {csv_path}")
-        print(f"共处理 {len(all_data)} 条数据，匹配并更新了 {len(all_data)} 行")
-
-    def __getitem__(self, index):
-        entry = self.entries[index]
-        data_dict_wt, data_dict_mt = self._build_data_dicts(entry)
 
         if self.transform is not None:
             data_dict_wt, _ = self.transform(data_dict_wt)
@@ -1161,6 +1035,18 @@ class SkempiDataset_lmdb(Dataset):
         return {"wt": data_dict_wt,
                 "mt": data_dict_mt,
                 }
+def get_skempi_dataset(cfg):
+    from src.utils.transforms import get_transform
+    return SkempiDataset_lmdb(
+        csv_path=config.data.csv_path,
+        prior_dir=config.data.prior_dir,
+        pdb_wt_dir=config.data.pdb_wt_dir,
+        pdb_mt_dir=config.data.pdb_mt_dir,
+        cache_dir=config.data.cache_dir,
+        num_cvfolds=self.num_cvfolds,
+        cvfold_index=fold,
+        transform=get_transform(config.data.transform)
+    )
 
 if __name__ == '__main__':
     # subset = HER2
@@ -1180,15 +1066,13 @@ if __name__ == '__main__':
     parser.add_argument('--pdb_mt_dir', type=str, default=f'../../data/SKEMPI2/{subset}_cache/optimized')
     parser.add_argument('--cache_dir', type=str, default=f'../../data/SKEMPI2/{subset}_cache/entries_cache')
     parser.add_argument('--reset', action='store_true', default=False)
-    parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args(remaining_args)
     if subset == "S285" or  subset == "HER2" or subset == "CR6261" or subset == "Demo":
         blocklist = {}
-        # os.system(f'python build_mutant_case.py --subset {subset}')  # generate mutant structures by FoldX
+        os.system(f'python build_mutant_case.py --subset {subset}')  # generate mutant structures by FoldX
     else:
         blocklist = frozenset({'1KBH'})
         os.system('python build_mutant_skempi.py')  # generate mutant structures by FoldX
-        # os.system('python build_mutant_skempi2.py')  # 根据skempi_v2.csv进行生成
 
     dataset = SkempiDataset_lmdb(
         csv_path = args.csv_path,
@@ -1196,7 +1080,6 @@ if __name__ == '__main__':
         pdb_wt_dir = args.pdb_wt_dir,
         pdb_mt_dir=args.pdb_mt_dir,
         cache_dir = args.cache_dir,
-        device = args.device,
         split = 'train',
         num_cvfolds=1,
         cvfold_index=0,
@@ -1204,15 +1087,3 @@ if __name__ == '__main__':
         blocklist=blocklist,
     )
     print(len(dataset))
-
-    # ==========================================
-    # 数据集构建完成后：
-    # 1. 调用 ProteinMPNN 计算 cycle scores
-    # 2. 更新到 args.csv_path
-    # 3. 重新加载 entries.pkl
-    # ==========================================
-    dataset.update_csv_with_mpnn_scores(args.csv_path)
-
-    # 从更新后的 CSV 重新构建 entries.pkl
-    dataset._load_entries(reset=True)
-    print(f"已从更新后的 CSV 重新加载 entries: {dataset.entries_cache}")

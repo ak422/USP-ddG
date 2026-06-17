@@ -114,7 +114,9 @@ python case_study.py ./configs/inference/case_study_S285.yml --device cuda:0
 python train.py ./configs/train/CATH-MoE.yml --device cuda:0
 ```
 
-##### Evaluate USP-ddG in a zero-shot setting using the provided PDB file and mutation list
+##### Evaluate USP-ddG in a zero-shot setting using the provided PDB file and mutation list. 
+
+- Before running, please ensure that the FoldX executable is accessible in the current working directory and that the pre-trained ESM2 weights are correctly placed in the designated path (./data/esm2_t33_650M_UR50D)
 
 ```
 python zero_shot.py ./configs/inference/zero_shot.yml  --device cuda:0

@@ -3,116 +3,21 @@ import enum
 ##
 # Residue identities
 
-# non_standard_residue_substitutions = {
-#     '2AS':'ASP', '3AH':'HIS', '5HP':'GLU', 'ACL':'ARG', 'AGM':'ARG', 'AIB':'ALA', 'ALM':'ALA', 'ALO':'THR', 'ALY':'LYS', 'ARM':'ARG',
-#     'ASA':'ASP', 'ASB':'ASP', 'ASK':'ASP', 'ASL':'ASP', 'ASQ':'ASP', 'AYA':'ALA', 'BCS':'CYS', 'BHD':'ASP', 'BMT':'THR', 'BNN':'ALA',
-#     'BUC':'CYS', 'BUG':'LEU', 'C5C':'CYS', 'C6C':'CYS', 'CAS':'CYS', 'CCS':'CYS', 'CEA':'CYS', 'CGU':'GLU', 'CHG':'ALA', 'CLE':'LEU', 'CME':'CYS',
-#     'CSD':'ALA', 'CSO':'CYS', 'CSP':'CYS', 'CSS':'CYS', 'CSW':'CYS', 'CSX':'CYS', 'CXM':'MET', 'CY1':'CYS', 'CY3':'CYS', 'CYG':'CYS',
-#     'CYM':'CYS', 'CYQ':'CYS', 'DAH':'PHE', 'DAL':'ALA', 'DAR':'ARG', 'DAS':'ASP', 'DCY':'CYS', 'DGL':'GLU', 'DGN':'GLN', 'DHA':'ALA',
-#     'DHI':'HIS', 'DIL':'ILE', 'DIV':'VAL', 'DLE':'LEU', 'DLY':'LYS', 'DNP':'ALA', 'DPN':'PHE', 'DPR':'PRO', 'DSN':'SER', 'DSP':'ASP',
-#     'DTH':'THR', 'DTR':'TRP', 'DTY':'TYR', 'DVA':'VAL', 'EFC':'CYS', 'FLA':'ALA', 'FME':'MET', 'GGL':'GLU', 'GL3':'GLY', 'GLZ':'GLY',
-#     'GMA':'GLU', 'GSC':'GLY', 'HAC':'ALA', 'HAR':'ARG', 'HIC':'HIS', 'HIP':'HIS', 'HMR':'ARG', 'HPQ':'PHE', 'HTR':'TRP', 'HYP':'PRO',
-#     'IAS':'ASP', 'IIL':'ILE', 'IYR':'TYR', 'KCX':'LYS', 'LLP':'LYS', 'LLY':'LYS', 'LTR':'TRP', 'LYM':'LYS', 'LYZ':'LYS', 'MAA':'ALA', 'MEN':'ASN',
-#     'MHS':'HIS', 'MIS':'SER', 'MLE':'LEU', 'MPQ':'GLY', 'MSA':'GLY', 'MSE':'MET', 'MVA':'VAL', 'NEM':'HIS', 'NEP':'HIS', 'NLE':'LEU',
-#     'NLN':'LEU', 'NLP':'LEU', 'NMC':'GLY', 'OAS':'SER', 'OCS':'CYS', 'OMT':'MET', 'PAQ':'TYR', 'PCA':'GLU', 'PEC':'CYS', 'PHI':'PHE',
-#     'PHL':'PHE', 'PR3':'CYS', 'PRR':'ALA', 'PTR':'TYR', 'PYX':'CYS', 'SAC':'SER', 'SAR':'GLY', 'SCH':'CYS', 'SCS':'CYS', 'SCY':'CYS',
-#     'SEL':'SER', 'SEP':'SER', 'SET':'SER', 'SHC':'CYS', 'SHR':'LYS', 'SMC':'CYS', 'SOC':'CYS', 'STY':'TYR', 'SVA':'SER', 'TIH':'ALA',
-#     'TPL':'TRP', 'TPO':'THR', 'TPQ':'ALA', 'TRG':'LYS', 'TRO':'TRP', 'TYB':'TYR', 'TYI':'TYR', 'TYQ':'TYR', 'TYS':'TYR', 'TYY':'TYR'
-# }
-
-
-# Mapping non-standard / modified amino acids to standard residues
 non_standard_residue_substitutions = {
-    # Alanine
-    'AIB':'ALA', 'AYA':'ALA', 'BNN':'ALA', 'CHG':'ALA',
-    'DHA':'ALA', 'FLA':'ALA', 'HAC':'ALA', 'MAA':'ALA',
-    'PRR':'ALA', 'TIH':'ALA', 'TPQ':'ALA', 'DNP':'ALA',
-    'DAL':'ALA',
-
-    # Arginine
-    'AGM':'ARG', 'ACL':'ARG', 'ARM':'ARG', 'HAR':'ARG',
-    'HMR':'ARG', 'DAR':'ARG',
-
-    # Asparagine
-    'MEN':'ASN',
-
-    # Aspartic acid
-    '2AS':'ASP', 'ASA':'ASP', 'ASB':'ASP', 'ASK':'ASP',
-    'ASL':'ASP', 'ASQ':'ASP', 'BHD':'ASP', 'DAS':'ASP',
-    'DSP':'ASP', 'IAS':'ASP',
-
-    # Cysteine
-    'BCS':'CYS', 'BUC':'CYS', 'C5C':'CYS', 'C6C':'CYS',
-    'CAS':'CYS', 'CCS':'CYS', 'CEA':'CYS', 'CME':'CYS',
-    'CSO':'CYS', 'CSP':'CYS', 'CSS':'CYS', 'CSW':'CYS',
-    'CSX':'CYS', 'CY1':'CYS', 'CY3':'CYS', 'CYG':'CYS',
-    'CYM':'CYS', 'CYQ':'CYS', 'DCY':'CYS', 'EFC':'CYS',
-    'OCS':'CYS', 'PEC':'CYS', 'PR3':'CYS', 'PYX':'CYS',
-    'SCH':'CYS', 'SCS':'CYS', 'SCY':'CYS', 'SHC':'CYS',
-    'SMC':'CYS', 'SOC':'CYS',
-
-    # Glutamine
-    'DGN':'GLN',
-
-    # Glutamic acid
-    '5HP':'GLU', 'CGU':'GLU', 'GGL':'GLU', 'GMA':'GLU',
-    'PCA':'GLU', 'DGL':'GLU',
-
-    # Glycine
-    'GL3':'GLY', 'GLZ':'GLY', 'GSC':'GLY', 'MPQ':'GLY',
-    'MSA':'GLY', 'NMC':'GLY', 'SAR':'GLY',
-
-    # Histidine
-    '3AH':'HIS', 'HIC':'HIS', 'HIP':'HIS', 'MHS':'HIS',
-    'NEM':'HIS', 'NEP':'HIS', 'DHI':'HIS',
-
-    # Isoleucine
-    'IIL':'ILE', 'DIL':'ILE',
-
-    # Leucine
-    'BUG':'LEU', 'CLE':'LEU', 'DLE':'LEU', 'MLE':'LEU',
-    'NLE':'LEU', 'NLN':'LEU', 'NLP':'LEU',
-
-    # Lysine
-    'ALY':'LYS', 'KCX':'LYS', 'LLP':'LYS', 'LLY':'LYS',
-    'LYM':'LYS', 'LYZ':'LYS', 'SHR':'LYS', 'TRG':'LYS',
-    'DLY':'LYS', 'M3L':'LYS', 'MLY':'LYS', 'MLZ':'LYS',
-
-    # Methionine
-    'CXM':'MET', 'FME':'MET', 'MSE':'MET', 'OMT':'MET',
-    'MHO':'MET',
-
-    # Phenylalanine
-    'DAH':'PHE', 'DPN':'PHE', 'HPQ':'PHE', 'PHI':'PHE',
-    'PHL':'PHE', 'F2F':'PHE',
-
-    # Proline
-    'HYP':'PRO', 'DPR':'PRO',
-
-    # Serine
-    'MIS':'SER', 'OAS':'SER', 'SAC':'SER', 'SEL':'SER',
-    'SEP':'SER', 'SET':'SER', 'SVA':'SER', 'DSN':'SER',
-
-    # Threonine
-    'ALO':'THR', 'BMT':'THR', 'DTH':'THR', 'TPO':'THR',
-
-    # Tryptophan
-    'HTR':'TRP', 'LTR':'TRP', 'TPL':'TRP', 'TRO':'TRP',
-    'DTR':'TRP',
-
-    # Tyrosine
-    'IYR':'TYR', 'PAQ':'TYR', 'PTR':'TYR', 'STY':'TYR',
-    'TYB':'TYR', 'TYI':'TYR', 'TYQ':'TYR', 'TYS':'TYR',
-    'TYY':'TYR', 'DTY':'TYR',
-
-    # Valine
-    'MVA':'VAL', 'DVA':'VAL', 'DIV':'VAL',
-
-    # Special ambiguous / uncommon
-    'UNK':'GLY',
-    'SEC':'CYS',   # Selenocysteine
-    'PYL':'LYS',   # Pyrrolysine
-    'ORN':'LYS'
+    '2AS':'ASP', '3AH':'HIS', '5HP':'GLU', 'ACL':'ARG', 'AGM':'ARG', 'AIB':'ALA', 'ALM':'ALA', 'ALO':'THR', 'ALY':'LYS', 'ARM':'ARG',
+    'ASA':'ASP', 'ASB':'ASP', 'ASK':'ASP', 'ASL':'ASP', 'ASQ':'ASP', 'AYA':'ALA', 'BCS':'CYS', 'BHD':'ASP', 'BMT':'THR', 'BNN':'ALA',
+    'BUC':'CYS', 'BUG':'LEU', 'C5C':'CYS', 'C6C':'CYS', 'CAS':'CYS', 'CCS':'CYS', 'CEA':'CYS', 'CGU':'GLU', 'CHG':'ALA', 'CLE':'LEU', 'CME':'CYS',
+    'CSD':'ALA', 'CSO':'CYS', 'CSP':'CYS', 'CSS':'CYS', 'CSW':'CYS', 'CSX':'CYS', 'CXM':'MET', 'CY1':'CYS', 'CY3':'CYS', 'CYG':'CYS',
+    'CYM':'CYS', 'CYQ':'CYS', 'DAH':'PHE', 'DAL':'ALA', 'DAR':'ARG', 'DAS':'ASP', 'DCY':'CYS', 'DGL':'GLU', 'DGN':'GLN', 'DHA':'ALA',
+    'DHI':'HIS', 'DIL':'ILE', 'DIV':'VAL', 'DLE':'LEU', 'DLY':'LYS', 'DNP':'ALA', 'DPN':'PHE', 'DPR':'PRO', 'DSN':'SER', 'DSP':'ASP',
+    'DTH':'THR', 'DTR':'TRP', 'DTY':'TYR', 'DVA':'VAL', 'EFC':'CYS', 'FLA':'ALA', 'FME':'MET', 'GGL':'GLU', 'GL3':'GLY', 'GLZ':'GLY',
+    'GMA':'GLU', 'GSC':'GLY', 'HAC':'ALA', 'HAR':'ARG', 'HIC':'HIS', 'HIP':'HIS', 'HMR':'ARG', 'HPQ':'PHE', 'HTR':'TRP', 'HYP':'PRO',
+    'IAS':'ASP', 'IIL':'ILE', 'IYR':'TYR', 'KCX':'LYS', 'LLP':'LYS', 'LLY':'LYS', 'LTR':'TRP', 'LYM':'LYS', 'LYZ':'LYS', 'MAA':'ALA', 'MEN':'ASN',
+    'MHS':'HIS', 'MIS':'SER', 'MLE':'LEU', 'MPQ':'GLY', 'MSA':'GLY', 'MSE':'MET', 'MVA':'VAL', 'NEM':'HIS', 'NEP':'HIS', 'NLE':'LEU',
+    'NLN':'LEU', 'NLP':'LEU', 'NMC':'GLY', 'OAS':'SER', 'OCS':'CYS', 'OMT':'MET', 'PAQ':'TYR', 'PCA':'GLU', 'PEC':'CYS', 'PHI':'PHE',
+    'PHL':'PHE', 'PR3':'CYS', 'PRR':'ALA', 'PTR':'TYR', 'PYX':'CYS', 'SAC':'SER', 'SAR':'GLY', 'SCH':'CYS', 'SCS':'CYS', 'SCY':'CYS',
+    'SEL':'SER', 'SEP':'SER', 'SET':'SER', 'SHC':'CYS', 'SHR':'LYS', 'SMC':'CYS', 'SOC':'CYS', 'STY':'TYR', 'SVA':'SER', 'TIH':'ALA',
+    'TPL':'TRP', 'TPO':'THR', 'TPQ':'ALA', 'TRG':'LYS', 'TRO':'TRP', 'TYB':'TYR', 'TYI':'TYR', 'TYQ':'TYR', 'TYS':'TYR', 'TYY':'TYR'
 }
 
 BB_ATOMS = ["N", "CA", "C", "O"]
@@ -284,9 +189,7 @@ restype_to_heavyatom_names = {
     AA.HIS: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'ND1', 'CD2', 'CE1', 'NE2', '',    '',    '',    '', 'OXT'],
     AA.ILE: ['N', 'CA', 'C', 'O', 'CB', 'CG1', 'CG2', 'CD1', '',    '',    '',    '',    '',    '', 'OXT'],
     AA.LEU: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD1', 'CD2', '',    '',    '',    '',    '',    '', 'OXT'],
-    # AA.LYS: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD',  'CE',  'NZ',  '',    '',    '',    '',    '', 'OXT'],
-
-    AA.LYS: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD',  'CE',  'NZ', 'CH2',  '',    '',    '',    '', 'OXT'],
+    AA.LYS: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD',  'CE',  'NZ',  '',    '',    '',    '',    '', 'OXT'],
     AA.MET: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'SD',  'CE',  '',    '',    '',    '',    '',    '', 'OXT'],
     AA.PHE: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD1', 'CD2', 'CE1', 'CE2', 'CZ',  '',    '',    '', 'OXT'],
     AA.PRO: ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD',  '',    '',    '',    '',    '',    '',    '', 'OXT'],

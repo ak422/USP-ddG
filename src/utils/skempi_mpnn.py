@@ -1,18 +1,18 @@
 import functools
+import pandas as pd
 from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
+import math
 from sklearn.metrics import roc_auc_score, precision_score, recall_score
 from sklearn.exceptions import UndefinedMetricWarning
 import warnings
 from sklearn.linear_model import LinearRegression
 from tqdm.auto import tqdm
+import torch
 import os
-import logging
-from pathlib import Path
-import subprocess
-import re
-import multiprocessing as mp
+import pickle
+import random
 
 from src.utils.misc import inf_iterator, BlackHole
 from src.utils.data_skempi_mpnn import PaddingCollate
@@ -21,9 +21,16 @@ from src.datasets import SkempiDataset_lmdb
 
 from torch.utils.data.sampler import Sampler
 from collections import defaultdict
+from collections import Counter
 
 class ClassSequentialSampler(Sampler):
     def __init__(self, labels, shuffle_classes=False, shuffle_samples=True, logger=None):
+        """
+        Args:
+            labels (list): 数据集的结构域标签列表，如 [0, 1, 2, 0, 1, 2, ...]
+            shuffle_classes (bool): 是否打乱类别顺序（默认 True）
+            shuffle_samples (bool): 是否打乱当前类别内的样本顺序（默认 True）
+        """
         self.labels = labels
         self.shuffle_classes = shuffle_classes
         self.shuffle_samples = shuffle_samples
@@ -32,51 +39,26 @@ class ClassSequentialSampler(Sampler):
         self.label_to_indices = defaultdict(list)
         for idx, label in enumerate(labels):
             self.label_to_indices[label].append(idx)
-
+        # {cath-class: lable-index}
         cath_index_dict = {3: 0, 2: 1, 1: 2, 4: 3, 0: 4, 6: 5}
-        self.cath_index = [[1], [5], [2], [0], [3], [4]]
-        # import time
-        # random.seed(int(time.time()))
-        # random.shuffle(self.cath_index)
-        # logger.info(self.cath_index)
-        reverse_dict = {v: k for k, v in cath_index_dict.items()}
-        mapped_keys = [[reverse_dict[idx[0]]] for idx in self.cath_index]
-        logger.info(mapped_keys)
+        self.cath_index = [[0], [2], [1], [3], [4], [5]]
 
         self.num_classes = len(self.cath_index)
         self.num_samples = len(labels)
-        self.logger = logger
-
-        # ===== 新增：epoch 计数器 =====
-        self.epoch = 1
-
-    def set_epoch(self, epoch):
-        self.epoch = epoch
 
     def __iter__(self):
-        is_first_epoch = (self.epoch == 1)
-
-        # if self.shuffle_classes:
-        #     np.random.shuffle(self.cath_index)
-        if self.shuffle_classes and not is_first_epoch:  # not shuffle in epoch 1
+        # 1. 打乱类别顺序（如果启用）
+        if self.shuffle_classes:
             np.random.shuffle(self.cath_index)
 
-        # 遍历每个类别，并采样当前类别的样本
+        # 2. 遍历每个类别，并采样当前类别的样本
         indices = []
-        epoch_order_log = []  # 用于收集第一个 epoch 的详细顺序
-
         for cls in self.cath_index:
             cls_indices = []
-            class_labels = []
             for cl in cls:
                 cls_indices.extend(self.label_to_indices[cl])
-                class_labels.append(cl)
-
-            if self.shuffle_samples and not is_first_epoch:  # not shuffle in epoch 1
+            if self.shuffle_samples:
                 np.random.shuffle(cls_indices)
-            # if self.shuffle_samples:
-            #     np.random.shuffle(cls_indices)
-
             indices.extend(cls_indices)
 
         return iter(indices)
@@ -85,49 +67,8 @@ class ClassSequentialSampler(Sampler):
         return self.num_samples
 
 
-def _get_pdb_path(complex_name, pdb_dir):
-    pdb_path = os.path.join(pdb_dir, f"{complex_name}.pdb")
-    if os.path.exists(pdb_path):
-        return pdb_path
-    pdb_path = os.path.join(pdb_dir, f"{complex_name.upper()}.pdb")
-    if os.path.exists(pdb_path):
-        return pdb_path
-    return None
-
-
-def _run_tmalign(pdb1, pdb2):
-    try:
-        result = subprocess.run(
-            ['TMalign', pdb1, pdb2],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        output = result.stdout
-        # Parse the first TM-score (normalized by length of Chain_1, i.e., query)
-        match = re.search(r'TM-score=\s+([0-9.]+)', output)
-        if match:
-            return float(match.group(1))
-        return 0.0
-    except Exception:
-        return 0.0
-
-
-def _compute_max_tmscore(args):
-    tc, val_pdb_paths, PDB_dir = args
-    tp = _get_pdb_path(tc, PDB_dir)
-    if tp is None:
-        return (tc, 0.0, False)
-    max_tm = 0.0
-    for vp in val_pdb_paths:
-        tm = _run_tmalign(tp, vp)
-        if tm > max_tm:
-            max_tm = tm
-    return (tc, max_tm, True)
-
-
 class SkempiDatasetManager(object):
-    def __init__(self, config, split_seed, num_cvfolds, device, num_workers=4, logger=BlackHole()):
+    def __init__(self, config, split_seed, num_cvfolds, num_workers=4, logger=BlackHole()):
         super().__init__()
         self.config = config
         self.num_cvfolds = num_cvfolds
@@ -135,7 +76,6 @@ class SkempiDatasetManager(object):
         self.val_loaders = []
         self.chains = []
         self.logger = logger
-        self.device = device
         self.num_workers = num_workers
         self.split_seed = split_seed
         for fold in range(num_cvfolds):
@@ -152,7 +92,6 @@ class SkempiDatasetManager(object):
             pdb_mt_dir=config.data.pdb_mt_dir,
             prior_dir=config.data.prior_dir,
             cache_dir = config.data.cache_dir,
-            device = self.device,
             num_cvfolds = self.num_cvfolds,
             cvfold_index = fold,
             split_seed = self.split_seed,
@@ -168,50 +107,11 @@ class SkempiDatasetManager(object):
         val_cplx = set([e['complex_PPI'] for e in val_dataset.entries])
         leakage = train_cplx.intersection(val_cplx)
         assert len(leakage) == 0, f'data leakage {leakage}'
-        # cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
-
-        train_complex = set([e['complex'] for e in train_dataset.entries])
-        val_complex = set([e['complex'] for e in val_dataset.entries])
-        PDB_dir = Path(self.config.data.pdb_wt_dir).parent.joinpath('PDBs')
-
-        # Build val PDB path list
-        val_pdb_paths = []
-        for vc in val_complex:
-            vp = _get_pdb_path(vc, PDB_dir)
-            if vp is not None:
-                val_pdb_paths.append(vp)
-            else:
-                self.logger.warning(f'Val PDB not found for complex: {vc}')
-
-        # Prepare arguments for multiprocessing
-        train_list = list(train_complex)
-        args_list = [(tc, val_pdb_paths, PDB_dir) for tc in train_list]
-        num_workers = min(mp.cpu_count(), len(args_list)) if len(args_list) > 0 else 1
-
-        with mp.Pool(processes=num_workers) as pool:
-            results = list(tqdm(
-                pool.imap_unordered(_compute_max_tmscore, args_list),
-                total=len(args_list),
-                desc=f'Computing TM-scores for Fold-{fold+1}'
-            ))
-
-        tm_score_dict = {}
-        for tc, max_tm, found in results:
-            if not found:
-                self.logger.warning(f'Train PDB not found for complex: {tc}')
-            tm_score_dict[tc] = max_tm
-
-        # 对 entries 排序
-        train_dataset.entries.sort(
-            key=lambda x: tm_score_dict.get(x.get('complex', ''), 0),
-            reverse=True
-        )
-        sorted_data =  train_dataset.entries
-        cath_label_train = [e['cath_label_index'] for e in sorted_data]
+        cath_label_train = [e['cath_label_index'] for e in train_dataset.entries]
 
         sampler = ClassSequentialSampler(
             labels=cath_label_train,
-            shuffle_classes=True,  # 每个 epoch 随机打乱类别顺序
+            shuffle_classes=False,  # 每个 epoch 随机打乱类别顺序
             shuffle_samples=True,  # 每个类别内的样本顺序随机
             logger=self.logger,
         )
@@ -224,8 +124,7 @@ class SkempiDatasetManager(object):
             # shuffle=True,
             sampler=sampler,
             shuffle=False,    # 采样器已经控制顺序，无需再 shuffle
-            num_workers=self.num_workers,
-            drop_last=True
+            num_workers=self.num_workers
         )
 
         val_loader = DataLoader(

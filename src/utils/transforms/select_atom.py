@@ -86,7 +86,7 @@ atom15to37_index_map = -torch.ones((len(residue_list) , max_num_heavyatoms), dty
 for i_resi, resi_name3 in enumerate(residue_list):
     resi_name3 = AA(resi_name3)
     for indx, atom in enumerate(restype_name_to_atom15_names[resi_name3]):
-        if atom == '' or atom not in ALL_ATOMS:
+        if atom == '':
             continue
         atom15to37_index_map[i_resi][indx] = ALL_ATOM_POSNS[atom]
 

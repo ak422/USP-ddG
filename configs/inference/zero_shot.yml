@@ -1,13 +1,11 @@
 # python zero_shot.py ./configs/inference/zero_shot.yml  --device cuda:2
 checkpoints:
-  - ./trained_models/06_03_18_02_02_USP_ddG.pt
+  - ./trained_models/case_study.pt
 
 pdb_wt_path: ./data/zero_shot/1JTG.pdb
 cache_dir: ./data/zero_shot
 partner1: A
 partner2: B
-#ddG: -0.723782226
-#individual_list: ./data/zero_shot/individual_list.txt
 
 data:
   transform:
@@ -46,4 +44,4 @@ num_edges: 48
 
 loss_weight_boltzmann: 1.0
 ckpt_path: ./ckpt/soluble_model_weights/v_48_020.pt
-#sft_ckpt_path: ./ckpt/BA-DDG-ddg_model.ckpt
+

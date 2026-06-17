@@ -93,7 +93,6 @@ if __name__ == '__main__':
     dataset_mgr = SkempiDatasetManager(
         # config_model,
         config,
-        device=args.device,
         split_seed=config_model.train.seed,
         num_cvfolds=config_model.train.num_cvfolds,
         num_workers=args.num_workers,

@@ -1,7 +1,6 @@
 # python case_study.py ./configs/inference/case_study_S285.yml --device cuda:0
 checkpoints:
-#  - ./trained_models/case_study.pt      # sampler
-  - ./trained_models/05_08_20_10_01_USP_ddG.pt
+  - ./trained_models/case_study.pt      # sampler
 
 early_stoppingdir: ./early_stopping
 

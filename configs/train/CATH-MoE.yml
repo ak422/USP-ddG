@@ -1,12 +1,12 @@
 # training: python train.py ./configs/train/CATH-MoE.yml --tag CATH-MoE --device cuda:0
 # test: python test.py ./configs/train/CATH-MoE.yml  --device cuda:0
 checkpoints:
-#  # sampler
-#  - ./trained_models/USP-ddG-sampler_0.pt
-#  - ./trained_models/USP-ddG-sampler_1.pt
-#  - ./trained_models/USP-ddG-sampler_2.pt
-#  - ./trained_models/USP-ddG-sampler_3.pt
-#  - ./trained_models/USP-ddG-sampler_4.pt
+  # sampler
+  - ./trained_models/USP-ddG-sampler_0.pt
+  - ./trained_models/USP-ddG-sampler_1.pt
+  - ./trained_models/USP-ddG-sampler_2.pt
+  - ./trained_models/USP-ddG-sampler_3.pt
+  - ./trained_models/USP-ddG-sampler_4.pt
 
   # shuffle
 #  - ./trained_models/USP-ddG-random_0.pt
@@ -15,18 +15,6 @@ checkpoints:
 #  - ./trained_models/USP-ddG-random_3.pt
 #  - ./trained_models/USP-ddG-random_4.pt
 
-    #
-#    - ./trained_models/05_04_11_14_33_USP_ddG-3.pt
-#    - ./trained_models/05_05_02_34_08_USP_ddG-3.pt
-#    - ./trained_models/05_03_11_20_38_USP_ddG-3.pt
-#    - ./trained_models/05_03_11_20_41_USP_ddG-3.pt
-#    - ./trained_models/05_03_12_20_33_USP_ddG-3.pt
-
-  #
-    - ./trained_models/06_15_12_55_52_USP_ddG.pt
-    - ./trained_models/06_15_12_57_52_USP_ddG.pt
-
-
 early_stoppingdir: ./early_stopping
 model:
   encoder:
@@ -34,10 +22,10 @@ model:
     edge_feat_dim: 256
     num_layers: 4
   hidden_dim: 128
-  k1: 35    # knn neighbors
-  k2: 0     # long range
-  k3: 1     # neighbors of sequence
-  long_range_seq: 0
+  k1: 20    # knn neighbors
+  k2: 7     # long range
+  k3: 3     # neighbors of sequence
+  long_range_seq: 3
   dropout: 0.1
   noise_bb: &noise_bb 0.1
   noise_sd: &noise_sd 0.2
@@ -45,9 +33,9 @@ model:
 
   Moe:
     task_id: 0   # test: 200
-    topk: 4
+    topk: 2
     Task_num: 1
-    experts_num: 24
+    experts_num: 12
     ffn_num: 64
     apply_moe: True
     ffn_adapt: True
@@ -91,36 +79,31 @@ train:
     loss_foldx: 1.0
     loss_cath: 1.0
     loss_boltzmann: 1.0
-    loss_moe: 1.0
-
   max_epochs: 100
-  early_stopping_epoch: 80
+  early_stopping_epoch: 60
   val_freq: 5
   batch_size: 12
   seed: 2024
   num_cvfolds: 1
 
   max_grad_norm: 100.0
-  lr_print_freq: 50     # 每多少个 step 打印一次学习率
   optimizer:
     type: adam
-    lr: &lr 3.e-4           #  lr_max
-    lr_2: &lr_2 3.e-6       #  lr_max_esm2
-    lr_3: &lr_3 1.e-5       #  lr_max_foldx
+    lr: &lr 5.e-4     #  lr_max
+    lr_2: &lr_2 5.e-6   #  lr_max_esm2
+    lr_3: &lr_3 5.e-5   #  lr_max_foldx
     weight_decay: 1.e-4
-    weight_decay_2: 1.e-5
-    weight_decay_3: 1.e-4
+    weight_decay_2: 5.e-6
+    weight_decay_3: 5.e-6
     beta1: 0.9
     beta2: 0.999
-    eps: 1.e-8
   scheduler:
     type: lambdaLR
-    warm_up_iters: 3000
-    T_0: 18000              # cosine 衰减周期（步数）
+    warm_up_iters: 4000
+    T_iters: 5000  # Cycle
     lr_max: *lr
-    lr_stable: 1.e-5       # 最终稳定学习率
+    lr_min: 2.e-4
     lr_2_max: *lr_2
-    lr_2_stable: 3.e-7
+    lr_2_min: 2.e-6
     lr_3_max: *lr_3
-    lr_3_stable: 1.e-6
-    last_epoch: -1
+    lr_3_min: 2.e-5

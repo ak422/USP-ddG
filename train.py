@@ -52,20 +52,6 @@ def print_param_learning_rates(optimizer, model):
     print("="*50)
 
 
-def print_optimizer_lr(optimizer, prefix='', use_initial_lr=False):
-    """
-    打印优化器每个参数组的学习率
-    use_initial_lr=True 时打印 scheduler 保存的初始学习率（即 config 中的 lr_max），
-    否则打印当前学习率（可能已被 scheduler 修改，如 warmup 初期为 0）
-    """
-    lr_info = []
-    for i, param_group in enumerate(optimizer.param_groups):
-        group_name = optimizer.param_group_names[i] if hasattr(optimizer, 'param_group_names') else f'group_{i}'
-        lr = param_group.get('initial_lr', param_group['lr']) if use_initial_lr else param_group['lr']
-        lr_info.append(f'{group_name}={lr:.8e}')
-    print(f"{prefix}LR: " + ', '.join(lr_info))
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str)
@@ -111,12 +97,6 @@ if __name__ == '__main__':
         num_cvfolds=config.train.num_cvfolds,
         logger=logger,
     ).to(args.device)
-
-    # # 打印初始学习率（使用 config 中设置的峰值学习率，而不是 scheduler 预热后的当前学习率）
-    # for fold in range(config.train.num_cvfolds):
-    #     _, optimizer, _, _ = cv_mgr.get(fold)
-    #     print_optimizer_lr(optimizer, prefix=f'[Initial Fold {fold+1}] ', use_initial_lr=True)
-
     it_first = 1  # epoch from 1 for warmup_CosineAnneal
 
     # Data
@@ -126,16 +106,15 @@ if __name__ == '__main__':
         split_seed=config.train.seed,
         num_cvfolds=config.train.num_cvfolds,
         # current_epoch=it_first,
-        device=args.device,
         num_workers=args.num_workers,
         logger=logger,
     )
 
-    def train_one_epoch(dataset_mgr, fold, epoch, global_step):
+    def train_one_epoch(dataset_mgr, fold, epoch):
         model, optimizer, scheduler, early_stopping = cv_mgr.get(fold)
 
         if early_stopping.early_stop == True:
-            return fold, None, global_step
+            return fold, None
 
         time_start = current_milli_time()
         mean_loss = torch.zeros(1).to(args.device)
@@ -143,7 +122,6 @@ if __name__ == '__main__':
 
         # Prepare data
         train_loader = dataset_mgr.get_train_loader(fold)
-        train_loader.sampler.set_epoch(epoch)
         train_loader = tqdm(train_loader, file=sys.stdout, bar_format="{l_bar}%s{bar}%s{r_bar}" % (Fore.WHITE, Fore.RESET))
 
         for step, data in enumerate(train_loader):
@@ -163,34 +141,18 @@ if __name__ == '__main__':
 
             orig_grad_norm = clip_grad_norm_(model.parameters(), config.train.max_grad_norm)
             optimizer.step()
-            if config.train.optimizer.type == 'adam':
-                scheduler.step()
-                global_step += 1
-                # 记录每个参数组的学习率到 TensorBoard
-                for i, param_group in enumerate(optimizer.param_groups):
-                    group_name = optimizer.param_group_names[i] if hasattr(optimizer, 'param_group_names') else f'group_{i}'
-                    writer.add_scalar(f'lr/{group_name}', param_group['lr'], global_step)
-                writer.add_scalar('train/loss_step', loss.item(), global_step)
-                # # 每隔一定步数在控制台打印学习率
-                # lr_print_freq = config.train.get('lr_print_freq', 50)
-                # if global_step % lr_print_freq == 0:
-                #     print_optimizer_lr(optimizer, prefix=f'[Step {global_step}] ')
             optimizer.zero_grad()
 
-        time_backward_end = current_milli_time()
+            if config.train.optimizer.type == 'adam':
+                scheduler.step()
 
-        # 打印并记录 epoch 结束时的学习率
-        lr_info = []
-        for i, param_group in enumerate(optimizer.param_groups):
-            group_name = optimizer.param_group_names[i] if hasattr(optimizer, 'param_group_names') else f'group_{i}'
-            lr_info.append(f'{group_name}={param_group["lr"]:.2e}')
-            writer.add_scalar(f'lr_epoch/{group_name}', param_group['lr'], epoch)
-        logger.info(f'[epoch {epoch}/{config.train.max_epochs} fold {fold+1}/{config.train.num_cvfolds}] mean loss {mean_loss.item():.4f} | LR: ' + ', '.join(lr_info))
+        time_backward_end = current_milli_time()
+        logger.info(f'[epoch {epoch}/{config.train.max_epochs} fold {fold+1}/{config.train.num_cvfolds}] mean loss {mean_loss.item():.4f}')
 
         if epoch >= config.train.early_stopping_epoch and early_stopping.early_stop == False:
             early_stopping(mean_loss, model, fold)
 
-        return None, mean_loss, global_step
+        return None, mean_loss
 
     def validate(epoch):
         scalar_accum = ScalarMetricAccumulator()
@@ -252,7 +214,6 @@ if __name__ == '__main__':
         # 在训练循环开始前初始化trackers
         logger.info('Training model...')
         early_stopping_sets = set()
-        global_step = 0
 
         for epoch in range(it_first, config.train.max_epochs + 1):
             # early stopping
@@ -260,7 +221,7 @@ if __name__ == '__main__':
                 break
 
             for fold in range(config.train.num_cvfolds):
-                fold_flags, fold_loss, global_step = train_one_epoch(dataset_mgr, fold, epoch, global_step)
+                fold_flags, fold_loss = train_one_epoch(dataset_mgr, fold, epoch)
                 early_stopping_sets.add(fold_flags)
 
             if (config.train.num_cvfolds == 1 and config.data.cath_fold == False and config.data.PPIformer == False):
